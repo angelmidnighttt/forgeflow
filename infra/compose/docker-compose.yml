@@ -1,0 +1,23 @@
+# Local development services. Start with `npm run db:up`, stop with `npm run db:down`.
+name: forgeflow
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: forgeflow
+      POSTGRES_PASSWORD: forgeflow
+      POSTGRES_DB: forgeflow
+    ports:
+      # Override the host port with FORGEFLOW_DB_PORT if 5432 is already taken on your machine.
+      - '${FORGEFLOW_DB_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U forgeflow -d forgeflow']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

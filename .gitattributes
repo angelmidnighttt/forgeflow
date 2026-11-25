@@ -1,0 +1,7 @@
+# Normalize line endings so scripts and Dockerfiles work on Linux even when edited on Windows.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

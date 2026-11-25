@@ -1,0 +1,29 @@
+{
+  "name": "@forgeflow/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Drizzle schema, migrations and database helpers for ForgeFlow",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "generate": "drizzle-kit generate",
+    "migrate": "node dist/scripts/migrate.js",
+    "reset": "node dist/scripts/reset.js",
+    "seed": "node dist/scripts/seed.js"
+  },
+  "dependencies": {
+    "@forgeflow/config": "*",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.6",
+    "drizzle-kit": "^0.31.11"
+  }
+}

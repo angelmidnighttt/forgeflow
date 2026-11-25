@@ -1,0 +1,23 @@
+{
+  "name": "@forgeflow/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ForgeFlow dashboard (Next.js)",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@forgeflow/contracts": "*",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
+  }
+}

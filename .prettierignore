@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+apps/web/.next
+apps/web/next-env.d.ts
+packages/database/migrations
+package-lock.json
+docs
+apps/web/AGENTS.md

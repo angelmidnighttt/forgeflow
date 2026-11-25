@@ -1,0 +1,43 @@
+{
+  "name": "forgeflow",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ForgeFlow: deployment, incident and remediation control plane",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/ensure-env.mjs && npm run db:up && tsc -b && npm run db:migrate && concurrently -k -n build,api,web -c gray,cyan,magenta \"tsc -b -w --preserveWatchOutput\" \"npm run dev -w @forgeflow/api\" \"npm run dev -w @forgeflow/web\"",
+    "build": "tsc -b && npm run build -w @forgeflow/web",
+    "typecheck": "tsc -b && npm run typecheck -w @forgeflow/web",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "tsc -b && vitest run",
+    "db:up": "docker compose -f infra/compose/docker-compose.yml up -d --wait",
+    "db:down": "docker compose -f infra/compose/docker-compose.yml down",
+    "db:generate": "npm run generate -w @forgeflow/database",
+    "db:migrate": "npm run migrate -w @forgeflow/database",
+    "db:reset": "npm run reset -w @forgeflow/database",
+    "db:seed": "npm run seed -w @forgeflow/database",
+    "clean": "rimraf --glob \"apps/*/dist\" \"packages/*/dist\" \"apps/web/.next\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.6",
+    "concurrently": "^10.0.7",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
+    "prettier": "^3.10.1",
+    "rimraf": "^6.1.4",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.74.0",
+    "vitest": "^5.1.1"
+  }
+}

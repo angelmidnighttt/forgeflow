@@ -21,7 +21,7 @@ npm run dev
 
 `npm run dev` sẽ:
 
-1. Tạo `.env` từ `.env.example` nếu chưa có.
+1. Tạo `.env` từ `.env.example` nếu chưa có (và bổ sung các biến mới thêm vào `.env.example`).
 2. Bật PostgreSQL (pgvector) bằng Docker Compose và chờ healthy.
 3. Build các package TypeScript, áp dụng migration.
 4. Chạy song song: TypeScript watch, api (tự restart khi code đổi), web.
@@ -55,10 +55,11 @@ Nếu cổng 5432 đã bị chiếm, đặt `FORGEFLOW_DB_PORT=5434` (hoặc c�
 
 ```text
 apps/
-  api/          NestJS 12 — REST API, webhook ingress, health
-    src/        Code
-    test/       Test (Jest)
+  api/          NestJS 12 — REST API, webhook ingress, health (xem "Cấu trúc api")
   web/          Next.js 16 — dashboard
+    src/app/        Route (App Router)
+    src/features/   Tính năng: component + cách nạp dữ liệu của nó
+    src/lib/        Tiện ích dùng chung (api-client)
 packages/
   config/       Nạp .env và validate biến môi trường bằng zod
   contracts/    Schema zod + kiểu dùng chung giữa api và web (envelope, health)
@@ -69,7 +70,42 @@ infra/
 scripts/        Script tiện ích cho môi trường dev
 ```
 
-Mỗi app và package giữ code trong `src/` và test trong `test/`, import code cần test qua `../src/...`:
+## Cấu trúc api
+
+`apps/api` dùng cấu trúc NestJS thông thường: mỗi tính năng là một module chỉ gồm controller, service và file module. Decorator, guard, type, hằng số… nằm trong `common/`, chia thư mục theo loại.
+
+```text
+apps/api/src/
+  main.ts               Khởi động process
+  app.module.ts         Module gốc: nạp các module, guard / filter / interceptor toàn cục
+  app.factory.ts        Tạo app Nest (dùng chung cho main.ts và test)
+  config/env.ts         Biến môi trường (zod)
+  database/             DatabaseModule (pool + Drizzle)
+  common/
+    constants/          Hằng số: injection token, metadata key, API prefix, chính sách token, cookie
+    decorators/         @Public(), @CurrentAuth()
+    filters/            HttpExceptionFilter (bọc lỗi thành { error })
+    guards/             JwtAuthGuard, OriginGuard (CSRF)
+    interceptors/       EnvelopeInterceptor (bọc kết quả thành { data })
+    pipes/              ZodValidationPipe
+    types/              Kiểu dữ liệu dùng chung (AuthContext, ClientInfo, kết quả xoay token…)
+    utils/              Hàm thuần: request id, clock, client info, băm / xoay refresh token
+  modules/
+    auth/               AuthController, AuthService, AccessTokenService,
+                        RefreshTokenService, RefreshCookieService
+    users/              UsersService
+    health/             HealthController (/health, /ready)
+```
+
+- **Controller** nhận request, gọi service, trả kết quả (interceptor bọc thành `{ data }`).
+- **Service** chứa logic và truy vấn DB bằng Drizzle (`@forgeflow/database`).
+- **Module** khai báo controller / service và export những gì module khác cần.
+- Tên file theo hậu tố: `*.controller.ts`, `*.service.ts`, `*.module.ts`, `*.guard.ts`, `*.decorator.ts`, `*.filter.ts`, `*.interceptor.ts`, `*.pipe.ts`, `*.types.ts`, `*.constants.ts`, `*.util.ts`.
+- Schema DB nằm ở `packages/database`, DTO dùng chung với web ở `packages/contracts`.
+
+## Test
+
+Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules/auth/…` ứng với `src/modules/auth/…`). Package dùng chung giữ test trong `packages/<tên>/test/`.
 
 - `*.test.ts`: unit test, không cần dịch vụ ngoài.
 - `*.int.test.ts`: integration test, chạy với PostgreSQL thật. Trước mỗi lần chạy, Jest tạo lại một database riêng tên `<tên DB>_test` (hoặc `TEST_DATABASE_URL`) và áp dụng migration; database dev không bị đụng tới.
@@ -81,17 +117,19 @@ Mỗi app và package giữ code trong `src/` và test trong `test/`, import cod
 - Mỗi request có `X-Request-Id` (dùng lại giá trị client gửi nếu hợp lệ, nếu không thì tự sinh); id này có trong log và trong body lỗi.
 - Body / query được validate bằng `ZodValidationPipe` với schema từ `@forgeflow/contracts`.
 
-## Session và CSRF
+## Xác thực (JWT)
 
-- **Mặc định mọi route đều cần đăng nhập.** Route công khai phải gắn `@Public()` (ví dụ `/health`, `/ready`).
-- Session lưu trong bảng `sessions`. Cookie chỉ chứa một token ngẫu nhiên; DB chỉ lưu hash SHA-256 của token.
-- Session hết hạn sau 7 ngày không dùng (được gia hạn khi dùng) và tối đa 30 ngày kể từ lúc đăng nhập.
-- Cookie session: `HttpOnly`, `SameSite=Lax`, `Path=/`. Khi `COOKIE_SECURE` bật (mặc định ở production), cookie có thêm `Secure` và tên có tiền tố `__Host-`.
-- Request thay đổi dữ liệu (`POST`, `PUT`, `PATCH`, `DELETE`):
-  - Bị từ chối nếu trình duyệt đánh dấu `Sec-Fetch-Site: cross-site` hoặc `Origin` khác `APP_ORIGIN`.
-  - Khi đã đăng nhập, phải gửi header `X-CSRF-Token` bằng giá trị cookie `ff_csrf` (hoặc trường `csrfToken` của `GET /api/v1/auth/session`).
-  - `@SkipCsrf()` chỉ dành cho route không bao giờ dùng cookie (webhook có chữ ký, gọi bằng API token).
-- `GET /api/v1/auth/session` trả về người dùng hiện tại; `POST /api/v1/auth/logout` xoá session và cookie.
+- **Mặc định mọi route đều cần access token.** Route công khai phải gắn `@Public()` (ví dụ `/health`, `/ready`, `/auth/refresh`).
+- **Access token**: JWT ký HS256 bằng `JWT_SECRET`, sống 15 phút, chỉ chứa user id (`sub`), `jti`, issuer `forgeflow`, audience `forgeflow-api`. Gửi qua header `Authorization: Bearer <token>`; server không tra DB khi kiểm tra. Hết hạn thì API trả `401` với mã `TOKEN_EXPIRED`.
+- **Refresh token**: chuỗi ngẫu nhiên 32 byte trong cookie `ff_refresh` (`HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`). Khi `COOKIE_SECURE` bật (mặc định ở production), cookie có thêm `Secure` và tên `__Secure-ff_refresh`. DB (bảng `refresh_tokens`) chỉ lưu hash SHA-256.
+- **Xoay vòng**: mỗi lần `POST /api/v1/auth/refresh`, refresh token cũ bị thay bằng token mới cùng "family".
+  - Token đã bị thay mà dùng lại sau 30 giây → coi như bị đánh cắp, cả family bị thu hồi, người dùng phải đăng nhập lại.
+  - Dùng lại trong vòng 30 giây (hai tab refresh cùng lúc) → `409 CONFLICT`, sign-in vẫn còn; client thử lại.
+- Refresh token hết hạn sau 7 ngày không dùng; một lần đăng nhập kéo dài tối đa 30 ngày.
+- `POST /api/v1/auth/logout` thu hồi cả family và xoá cookie. Access token đã phát vẫn dùng được tới khi hết hạn (tối đa 15 phút) — đó là đánh đổi của token không trạng thái.
+- `GET /api/v1/auth/me` trả về người dùng của access token.
+- **CSRF**: access token không nằm trong cookie nên request API thường không thể bị giả mạo. Thêm vào đó, mọi request `POST`/`PUT`/`PATCH`/`DELETE` bị từ chối (`403 ORIGIN_NOT_ALLOWED`) nếu trình duyệt đánh dấu `Sec-Fetch-Site: cross-site` hoặc `Origin` khác `APP_ORIGIN`.
+- Ở production, api từ chối khởi động nếu `JWT_SECRET` ngắn hơn 32 ký tự hoặc là giá trị dev trong `.env.example`.
 
 ## Docker image
 

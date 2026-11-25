@@ -1,19 +1,19 @@
 import { Module, type DynamicModule, type Type } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
-import { CLOCK, systemClock } from './common/clock.js';
-import { EnvelopeInterceptor } from './common/envelope.interceptor.js';
-import { HttpExceptionFilter } from './common/http-exception.filter.js';
-import { resolveRequestId } from './common/request-id.js';
-import { API_ENV, type ApiEnv } from './config/env.js';
+import { QUIET_PATHS, REDACTED_LOG_PATHS } from './common/constants/http.constants.js';
+import { API_ENV, CLOCK } from './common/constants/injection-tokens.js';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
+import { OriginGuard } from './common/guards/origin.guard.js';
+import { EnvelopeInterceptor } from './common/interceptors/envelope.interceptor.js';
+import { systemClock } from './common/utils/clock.util.js';
+import { resolveRequestId } from './common/utils/request-id.util.js';
+import type { ApiEnv } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
-import { HealthModule } from './health/health.module.js';
-import { CsrfGuard } from './identity/csrf.guard.js';
-import { IdentityModule } from './identity/identity.module.js';
-import { SessionGuard } from './identity/session.guard.js';
-
-/** Paths that are polled constantly and would only add noise to the request log. */
-const QUIET_PATHS = new Set(['/api/v1/health', '/api/v1/ready']);
+import { AuthModule } from './modules/auth/auth.module.js';
+import { HealthModule } from './modules/health/health.module.js';
+import { UsersModule } from './modules/users/users.module.js';
 
 @Module({})
 export class AppModule {
@@ -35,31 +35,23 @@ export class AppModule {
             level: env.LOG_LEVEL,
             genReqId: resolveRequestId,
             autoLogging: { ignore: (req) => QUIET_PATHS.has(req.url ?? '') },
-            redact: {
-              paths: [
-                'req.headers.authorization',
-                'req.headers.cookie',
-                'req.headers["x-csrf-token"]',
-                'req.headers["x-hub-signature-256"]',
-                'res.headers["set-cookie"]',
-              ],
-              censor: '[REDACTED]',
-            },
+            redact: { paths: REDACTED_LOG_PATHS, censor: '[REDACTED]' },
             ...(env.NODE_ENV === 'development'
               ? { transport: { target: 'pino-pretty', options: { singleLine: true } } }
               : {}),
           },
         }),
         DatabaseModule,
-        IdentityModule,
+        UsersModule,
+        AuthModule,
         HealthModule,
         ...extraImports,
       ],
       providers: [
         { provide: APP_FILTER, useClass: HttpExceptionFilter },
         // Guards run in this order: who is calling, then whether a state change is allowed.
-        { provide: APP_GUARD, useClass: SessionGuard },
-        { provide: APP_GUARD, useClass: CsrfGuard },
+        { provide: APP_GUARD, useClass: JwtAuthGuard },
+        { provide: APP_GUARD, useClass: OriginGuard },
         { provide: APP_INTERCEPTOR, useClass: EnvelopeInterceptor },
       ],
     };

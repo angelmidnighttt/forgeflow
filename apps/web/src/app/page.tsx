@@ -1,4 +1,4 @@
-import { SystemStatus } from './system-status';
+import { SystemStatus } from '@/features/system-status/system-status';
 
 export default function HomePage() {
   return (

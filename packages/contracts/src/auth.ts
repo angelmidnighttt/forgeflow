@@ -1,21 +1,23 @@
 import { z } from 'zod';
 
-/** Header the browser must send on POST/PUT/PATCH/DELETE when it is signed in. */
-export const CSRF_HEADER = 'x-csrf-token';
-
-/** GET /api/v1/auth/session — the signed-in user and the CSRF token for this session. */
-export const sessionViewSchema = z.object({
-  user: z.object({
-    id: z.uuid(),
-    email: z.email(),
-    name: z.string().nullable(),
-    emailVerified: z.boolean(),
-  }),
-  session: z.object({
-    id: z.uuid(),
-    createdAt: z.iso.datetime(),
-    expiresAt: z.iso.datetime(),
-  }),
-  csrfToken: z.string().min(1),
+/** The signed-in user, as returned by the auth endpoints. */
+export const authUserSchema = z.object({
+  id: z.uuid(),
+  email: z.email(),
+  name: z.string().nullable(),
+  emailVerified: z.boolean(),
 });
-export type SessionView = z.infer<typeof sessionViewSchema>;
+export type AuthUser = z.infer<typeof authUserSchema>;
+
+/**
+ * Returned when signing in and by POST /api/v1/auth/refresh. Send `accessToken` as
+ * `Authorization: Bearer <accessToken>` until `expiresAt`, then call /auth/refresh again.
+ * The refresh token itself is never in a response body: it lives in an HttpOnly cookie.
+ */
+export const tokenResponseSchema = z.object({
+  accessToken: z.string().min(1),
+  tokenType: z.literal('Bearer'),
+  expiresAt: z.iso.datetime(),
+  user: authUserSchema,
+});
+export type TokenResponse = z.infer<typeof tokenResponseSchema>;

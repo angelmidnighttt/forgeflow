@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
+import { API_PREFIX } from './common/constants/http.constants.js';
 import type { ApiEnv } from './config/env.js';
 
 export interface CreateAppOptions {
@@ -21,7 +22,7 @@ export async function createApp(
   });
   app.useLogger(app.get(Logger));
   app.use(cookieParser());
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix(API_PREFIX);
   app.enableShutdownHooks();
   return app;
 }

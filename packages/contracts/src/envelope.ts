@@ -5,8 +5,11 @@ export const ErrorCode = {
   ValidationFailed: 'VALIDATION_FAILED',
   BadRequest: 'BAD_REQUEST',
   Unauthorized: 'UNAUTHORIZED',
+  /** The access token expired: call POST /api/v1/auth/refresh, then retry. */
+  TokenExpired: 'TOKEN_EXPIRED',
   Forbidden: 'FORBIDDEN',
-  CsrfFailed: 'CSRF_FAILED',
+  /** A state-changing request came from another site (CSRF protection). */
+  OriginNotAllowed: 'ORIGIN_NOT_ALLOWED',
   NotFound: 'NOT_FOUND',
   Conflict: 'CONFLICT',
   RateLimited: 'RATE_LIMITED',

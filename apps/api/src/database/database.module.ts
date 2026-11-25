@@ -1,9 +1,7 @@
 import { Global, Inject, Logger, Module, type OnApplicationShutdown } from '@nestjs/common';
 import { createDatabase, type DatabaseHandle } from '@forgeflow/database';
-import { API_ENV, type ApiEnv } from '../config/env.js';
-
-/** Injection token for the shared connection pool and Drizzle instance. */
-export const DATABASE = Symbol('DATABASE');
+import { API_ENV, DATABASE } from '../common/constants/injection-tokens.js';
+import type { ApiEnv } from '../config/env.js';
 
 @Global()
 @Module({

@@ -1,11 +1,11 @@
 import { Body, Controller, Get, Module, Post, type INestApplication } from '@nestjs/common';
-import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import request from 'supertest';
 import { z } from 'zod';
 import { createApp } from '../src/app.factory.js';
-import { ZodValidationPipe } from '../src/common/zod-validation.pipe.js';
+import { Public } from '../src/common/decorators/public.decorator.js';
+import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe.js';
 import type { ApiEnv } from '../src/config/env.js';
-import { Public } from '../src/identity/auth.decorators.js';
 
 // The database URL points at a port where nothing listens, so /ready must report "down"
 // without the test needing a running PostgreSQL.
@@ -16,6 +16,7 @@ const env: ApiEnv = {
   DATABASE_URL: 'postgres://nobody:nothing@127.0.0.1:1/none',
   API_PORT: 0,
   APP_ORIGIN: 'http://localhost:3000',
+  JWT_SECRET: 'test-only-jwt-secret-0123456789abcdef',
 };
 
 const echoSchema = z.object({ name: z.string().min(1) });

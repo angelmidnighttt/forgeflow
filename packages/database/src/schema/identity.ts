@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 const timestamptz = () => timestamp({ withTimezone: true, mode: 'date' });
 
@@ -26,35 +26,50 @@ export const users = pgTable(
   (t) => [uniqueIndex('users_email_lower_key').on(sql`lower(${t.email})`)],
 );
 
+export const REFRESH_TOKEN_REVOKE_REASONS = ['rotated', 'logout', 'reuse_detected'] as const;
+export type RefreshTokenRevokeReason = (typeof REFRESH_TOKEN_REVOKE_REASONS)[number];
+
 /**
- * Server-side sessions. The cookie carries a random token; only its SHA-256 hash is stored,
- * so a copy of this table cannot be used to sign in.
+ * Refresh tokens. Access tokens are stateless JWTs; these long-lived tokens are what let a
+ * browser get new ones, so they are stored (as SHA-256 hashes only) to make sign-out and theft
+ * response possible. Every refresh replaces the token with a new one in the same family; a
+ * replaced token that shows up again means it was stolen, and the whole family is revoked.
  */
-export const sessions = pgTable(
-  'sessions',
+export const refreshTokens = pgTable(
+  'refresh_tokens',
   {
     id: uuid().primaryKey().defaultRandom(),
     userId: uuid()
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** Shared by every token created by refreshing the same sign-in. */
+    familyId: uuid().notNull(),
     tokenHash: text().notNull(),
-    /** Synchronizer CSRF token; the browser sends it back in the X-CSRF-Token header. */
-    csrfToken: text().notNull(),
     userAgent: text(),
     ipAddress: text(),
     createdAt: timestamptz().notNull().defaultNow(),
-    lastUsedAt: timestamptz().notNull().defaultNow(),
-    /** Idle expiry: moved forward while the session is used, never past absoluteExpiresAt. */
+    /** Idle limit of this token; never later than familyExpiresAt. */
     expiresAt: timestamptz().notNull(),
-    absoluteExpiresAt: timestamptz().notNull(),
+    /** Absolute limit of the sign-in: refreshing never extends past it. */
+    familyExpiresAt: timestamptz().notNull(),
+    revokedAt: timestamptz(),
+    revokedReason: text().$type<RefreshTokenRevokeReason>(),
   },
   (t) => [
-    uniqueIndex('sessions_token_hash_key').on(t.tokenHash),
-    index('sessions_user_id_idx').on(t.userId),
-    index('sessions_expires_at_idx').on(t.expiresAt),
+    uniqueIndex('refresh_tokens_token_hash_key').on(t.tokenHash),
+    index('refresh_tokens_family_id_idx').on(t.familyId),
+    index('refresh_tokens_user_id_idx').on(t.userId),
+    check(
+      'refresh_tokens_revoked_reason_check',
+      sql`${t.revokedReason} IS NULL OR ${t.revokedReason} IN ('rotated', 'logout', 'reuse_detected')`,
+    ),
+    check(
+      'refresh_tokens_revoked_consistent_check',
+      sql`(${t.revokedAt} IS NULL) = (${t.revokedReason} IS NULL)`,
+    ),
   ],
 );
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type Session = typeof sessions.$inferSelect;
+export type RefreshToken = typeof refreshTokens.$inferSelect;

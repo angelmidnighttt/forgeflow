@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import type { DynamicModule, INestApplication, Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import type { ApiEnv } from './config/env.js';
@@ -19,6 +20,7 @@ export async function createApp(
     bufferLogs: true,
   });
   app.useLogger(app.get(Logger));
+  app.use(cookieParser());
   app.setGlobalPrefix('api/v1');
   app.enableShutdownHooks();
   return app;

@@ -43,7 +43,8 @@ Nếu cổng 5432 đã bị chiếm, đặt `FORGEFLOW_DB_PORT=5434` (hoặc c�
 | `npm run typecheck`               | Kiểm tra kiểu toàn repo, gồm cả code test                 |
 | `npm run lint`                    | ESLint                                                    |
 | `npm run format` / `format:check` | Prettier                                                  |
-| `npm test`                        | Build rồi chạy Jest                                       |
+| `npm test`                        | Build rồi chạy Jest (unit + integration, cần PostgreSQL)  |
+| `npm run test:unit`               | Chỉ chạy unit test, không cần PostgreSQL                  |
 | `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL local                                |
 | `npm run db:generate`             | Sinh migration từ schema Drizzle (`drizzle-kit generate`) |
 | `npm run db:migrate`              | Áp dụng migration (chạy lặp lại an toàn)                  |
@@ -68,7 +69,10 @@ infra/
 scripts/        Script tiện ích cho môi trường dev
 ```
 
-Mỗi app và package giữ code trong `src/` và test trong `test/` (file `*.test.ts`), import code cần test qua `../src/...`.
+Mỗi app và package giữ code trong `src/` và test trong `test/`, import code cần test qua `../src/...`:
+
+- `*.test.ts`: unit test, không cần dịch vụ ngoài.
+- `*.int.test.ts`: integration test, chạy với PostgreSQL thật. Trước mỗi lần chạy, Jest tạo lại một database riêng tên `<tên DB>_test` (hoặc `TEST_DATABASE_URL`) và áp dụng migration; database dev không bị đụng tới.
 
 ## Quy ước API
 
@@ -76,6 +80,18 @@ Mỗi app và package giữ code trong `src/` và test trong `test/` (file `*.te
 - Response thành công: `{ "data": ... }`. Lỗi: `{ "error": { "code", "message", "requestId", "details?" } }`, với `code` lấy từ `ErrorCode` trong `@forgeflow/contracts`.
 - Mỗi request có `X-Request-Id` (dùng lại giá trị client gửi nếu hợp lệ, nếu không thì tự sinh); id này có trong log và trong body lỗi.
 - Body / query được validate bằng `ZodValidationPipe` với schema từ `@forgeflow/contracts`.
+
+## Session và CSRF
+
+- **Mặc định mọi route đều cần đăng nhập.** Route công khai phải gắn `@Public()` (ví dụ `/health`, `/ready`).
+- Session lưu trong bảng `sessions`. Cookie chỉ chứa một token ngẫu nhiên; DB chỉ lưu hash SHA-256 của token.
+- Session hết hạn sau 7 ngày không dùng (được gia hạn khi dùng) và tối đa 30 ngày kể từ lúc đăng nhập.
+- Cookie session: `HttpOnly`, `SameSite=Lax`, `Path=/`. Khi `COOKIE_SECURE` bật (mặc định ở production), cookie có thêm `Secure` và tên có tiền tố `__Host-`.
+- Request thay đổi dữ liệu (`POST`, `PUT`, `PATCH`, `DELETE`):
+  - Bị từ chối nếu trình duyệt đánh dấu `Sec-Fetch-Site: cross-site` hoặc `Origin` khác `APP_ORIGIN`.
+  - Khi đã đăng nhập, phải gửi header `X-CSRF-Token` bằng giá trị cookie `ff_csrf` (hoặc trường `csrfToken` của `GET /api/v1/auth/session`).
+  - `@SkipCsrf()` chỉ dành cho route không bao giờ dùng cookie (webhook có chữ ký, gọi bằng API token).
+- `GET /api/v1/auth/session` trả về người dùng hiện tại; `POST /api/v1/auth/logout` xoá session và cookie.
 
 ## Docker image
 

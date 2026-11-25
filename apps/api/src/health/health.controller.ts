@@ -4,7 +4,9 @@ import { pingDatabase, type DatabaseHandle } from '@forgeflow/database';
 import type { Response } from 'express';
 import { API_ENV, type ApiEnv } from '../config/env.js';
 import { DATABASE } from '../database/database.module.js';
+import { Public } from '../identity/auth.decorators.js';
 
+@Public()
 @Controller()
 export class HealthController {
   constructor(

@@ -6,6 +6,7 @@ export const ErrorCode = {
   BadRequest: 'BAD_REQUEST',
   Unauthorized: 'UNAUTHORIZED',
   Forbidden: 'FORBIDDEN',
+  CsrfFailed: 'CSRF_FAILED',
   NotFound: 'NOT_FOUND',
   Conflict: 'CONFLICT',
   RateLimited: 'RATE_LIMITED',

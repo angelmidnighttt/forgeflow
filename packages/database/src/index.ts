@@ -4,6 +4,7 @@ import * as schema from './schema/index.js';
 
 export { databaseEnvSchema, loadDatabaseEnv, type DatabaseEnv } from './env.js';
 export { migrateDatabase, migrationsFolder } from './migrate.js';
+export * from './schema/index.js';
 
 export type Database = NodePgDatabase<typeof schema>;
 

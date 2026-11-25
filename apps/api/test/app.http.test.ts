@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createApp } from '../src/app.factory.js';
 import { ZodValidationPipe } from '../src/common/zod-validation.pipe.js';
 import type { ApiEnv } from '../src/config/env.js';
+import { Public } from '../src/identity/auth.decorators.js';
 
 // The database URL points at a port where nothing listens, so /ready must report "down"
 // without the test needing a running PostgreSQL.
@@ -14,11 +15,13 @@ const env: ApiEnv = {
   APP_VERSION: 'test-1',
   DATABASE_URL: 'postgres://nobody:nothing@127.0.0.1:1/none',
   API_PORT: 0,
+  APP_ORIGIN: 'http://localhost:3000',
 };
 
 const echoSchema = z.object({ name: z.string().min(1) });
 
 /** Test-only routes for checking validation and error handling end to end. */
+@Public()
 @Controller('test')
 class TestController {
   @Post('echo')

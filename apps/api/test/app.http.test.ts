@@ -1,10 +1,10 @@
 import { Body, Controller, Get, Module, Post, type INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { z } from 'zod';
-import { createApp } from './app.factory.js';
-import { ZodValidationPipe } from './common/zod-validation.pipe.js';
-import type { ApiEnv } from './config/env.js';
+import { createApp } from '../src/app.factory.js';
+import { ZodValidationPipe } from '../src/common/zod-validation.pipe.js';
+import type { ApiEnv } from '../src/config/env.js';
 
 // The database URL points at a port where nothing listens, so /ready must report "down"
 // without the test needing a running PostgreSQL.

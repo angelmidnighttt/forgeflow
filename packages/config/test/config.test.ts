@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { baseEnvSchema, EnvValidationError, loadDotEnv, parseEnv, z } from './index.js';
+import { describe, expect, it } from '@jest/globals';
+import { baseEnvSchema, EnvValidationError, loadDotEnv, parseEnv, z } from '../src/index.js';
 
 describe('parseEnv', () => {
   const schema = baseEnvSchema.extend({
@@ -22,14 +22,15 @@ describe('parseEnv', () => {
   });
 
   it('lists every invalid or missing variable', () => {
+    let caught: unknown;
     try {
       parseEnv(schema, { NODE_ENV: 'staging', PORT: 'abc' });
-      expect.unreachable();
     } catch (error) {
-      expect(error).toBeInstanceOf(EnvValidationError);
-      const keys = (error as EnvValidationError).problems.map((p) => p.split(':')[0]);
-      expect(keys).toEqual(expect.arrayContaining(['NODE_ENV', 'DATABASE_URL', 'PORT']));
+      caught = error;
     }
+    expect(caught).toBeInstanceOf(EnvValidationError);
+    const keys = (caught as EnvValidationError).problems.map((p) => p.split(':')[0]);
+    expect(keys).toEqual(expect.arrayContaining(['NODE_ENV', 'DATABASE_URL', 'PORT']));
   });
 });
 

@@ -14,11 +14,11 @@
   "scripts": {
     "dev": "node scripts/ensure-env.mjs && npm run db:up && tsc -b && npm run db:migrate && concurrently -k -n build,api,web -c gray,cyan,magenta \"tsc -b -w --preserveWatchOutput\" \"npm run dev -w @forgeflow/api\" \"npm run dev -w @forgeflow/web\"",
     "build": "tsc -b && npm run build -w @forgeflow/web",
-    "typecheck": "tsc -b && npm run typecheck -w @forgeflow/web",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json && npm run typecheck -w @forgeflow/web",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "tsc -b && vitest run",
+    "test": "tsc -b && node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js",
     "db:up": "docker compose -f infra/compose/docker-compose.yml up -d --wait",
     "db:down": "docker compose -f infra/compose/docker-compose.yml down",
     "db:generate": "npm run generate -w @forgeflow/database",
@@ -29,15 +29,17 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@jest/globals": "^30.5.2",
+    "@swc/core": "^1.16.22",
+    "@swc/jest": "^0.2.39",
     "@types/node": "^22.20.6",
     "concurrently": "^10.0.7",
-    "esbuild": "^0.28.2",
     "eslint": "^10.15.0",
     "globals": "^17.14.0",
+    "jest": "^30.5.2",
     "prettier": "^3.10.1",
     "rimraf": "^6.1.4",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.74.0",
-    "vitest": "^5.1.1"
+    "typescript-eslint": "^8.74.0"
   }
 }

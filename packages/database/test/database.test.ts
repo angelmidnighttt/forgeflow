@@ -1,12 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createDatabase, pingDatabase } from './index.js';
+import { describe, expect, it, jest } from '@jest/globals';
+import { createDatabase, pingDatabase } from '../src/index.js';
 
 // Nothing listens on port 1, so no test here needs a running PostgreSQL.
 const UNREACHABLE = 'postgres://nobody:nothing@127.0.0.1:1/none';
 
 describe('createDatabase', () => {
   it('handles idle connection errors instead of crashing the process', async () => {
-    const onIdleClientError = vi.fn();
+    const onIdleClientError = jest.fn<(error: Error) => void>();
     const database = createDatabase(UNREACHABLE, { onIdleClientError });
     const failure = new Error('terminating connection due to administrator command');
 

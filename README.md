@@ -40,10 +40,10 @@ Nếu cổng 5432 đã bị chiếm, đặt `FORGEFLOW_DB_PORT=5434` (hoặc c�
 | --------------------------------- | --------------------------------------------------------- |
 | `npm run dev`                     | Chạy toàn bộ môi trường local                             |
 | `npm run build`                   | Build packages, api và web                                |
-| `npm run typecheck`               | Kiểm tra kiểu toàn repo                                   |
+| `npm run typecheck`               | Kiểm tra kiểu toàn repo, gồm cả code test                 |
 | `npm run lint`                    | ESLint                                                    |
 | `npm run format` / `format:check` | Prettier                                                  |
-| `npm test`                        | Build rồi chạy Vitest                                     |
+| `npm test`                        | Build rồi chạy Jest                                       |
 | `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL local                                |
 | `npm run db:generate`             | Sinh migration từ schema Drizzle (`drizzle-kit generate`) |
 | `npm run db:migrate`              | Áp dụng migration (chạy lặp lại an toàn)                  |
@@ -55,6 +55,8 @@ Nếu cổng 5432 đã bị chiếm, đặt `FORGEFLOW_DB_PORT=5434` (hoặc c�
 ```text
 apps/
   api/          NestJS 12 — REST API, webhook ingress, health
+    src/        Code
+    test/       Test (Jest)
   web/          Next.js 16 — dashboard
 packages/
   config/       Nạp .env và validate biến môi trường bằng zod
@@ -65,6 +67,8 @@ infra/
   docker/       Dockerfile của api và web
 scripts/        Script tiện ích cho môi trường dev
 ```
+
+Mỗi app và package giữ code trong `src/` và test trong `test/` (file `*.test.ts`), import code cần test qua `../src/...`.
 
 ## Quy ước API
 
@@ -87,7 +91,7 @@ docker run --rm -e DATABASE_URL=postgres://... forgeflow-api node packages/datab
 
 - **ESM toàn repo** (`"type": "module"`): NestJS 12 chỉ hỗ trợ ESM. Import tương đối phải có đuôi `.js`.
 - **TypeScript ghim ở 6.0.x**: `typescript-eslint` hiện chỉ hỗ trợ TypeScript < 6.1, nên chưa lên TypeScript 7.
-- **Test api dùng Vitest + SWC** (`unplugin-swc`) vì NestJS cần decorator metadata mà transformer mặc định của Vite không sinh ra.
+- **Test dùng Jest ở chế độ ESM**: `npm test` chạy Node với `--experimental-vm-modules`. TypeScript được dịch bằng `@swc/jest` vì NestJS cần decorator metadata. Cấu hình ở `jest.config.js`; code test được type-check qua `tsconfig.test.json`.
 - **Package dùng chung được build ra `dist/`** bằng TypeScript project references; `npm run dev` giữ `tsc -b -w` chạy nên sửa package là api tự restart.
 - **`.env` không bao giờ được commit.** Production nhận cấu hình từ môi trường deploy.
 

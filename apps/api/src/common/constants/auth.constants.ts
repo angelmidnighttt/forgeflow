@@ -20,6 +20,18 @@ export const TOKEN_POLICY = {
   refreshReuseGraceMs: 30 * 1000,
 } as const;
 
+/**
+ * argon2id parameters for new password hashes: 19 MiB, 2 passes, 1 lane (the OWASP Password
+ * Storage Cheat Sheet baseline). Hashes made with other parameters are upgraded on the next
+ * successful login.
+ */
+export const PASSWORD_HASH_OPTIONS = {
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+  outputLen: 32,
+} as const;
+
 /** Random bytes in a refresh token secret (base64url: 43 characters). */
 export const REFRESH_TOKEN_BYTES = 32;
 

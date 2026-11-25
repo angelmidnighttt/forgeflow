@@ -60,3 +60,10 @@ export interface IssuedTokens {
 export type RefreshOutcome =
   | { status: 'refreshed'; tokens: IssuedTokens }
   | { status: 'invalid' | 'conflict' | 'reuse_detected' };
+
+export type RegisterOutcome =
+  { status: 'registered'; tokens: IssuedTokens } | { status: 'email_taken' };
+
+/** `invalid_credentials` covers an unknown email, a wrong password and an OAuth-only account. */
+export type LoginOutcome =
+  { status: 'signed_in'; tokens: IssuedTokens } | { status: 'invalid_credentials' };

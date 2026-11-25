@@ -35,6 +35,23 @@ describe('UsersService', () => {
   it('returns undefined for an unknown id', async () => {
     await expect(new UsersService(database).findById(randomUUID())).resolves.toBeUndefined();
   });
+
+  it('finds a user by email regardless of letter case', async () => {
+    const created = await createUser(database.db);
+    const found = await new UsersService(database).findByEmail(created.email.toUpperCase());
+    expect(found?.id).toBe(created.id);
+  });
+
+  it('creates a user with a lowercased email, and returns undefined when the email is taken', async () => {
+    const service = new UsersService(database);
+    const email = `New-${randomUUID()}@Example.test`;
+    const user = await service.create({ email, name: 'New', passwordHash: 'argon2id$fake' });
+
+    expect(user?.email).toBe(email.toLowerCase());
+    await expect(
+      service.create({ email: email.toUpperCase(), name: 'Dup', passwordHash: null }),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe('users and refresh_tokens tables', () => {

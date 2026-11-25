@@ -119,7 +119,11 @@ Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules
 
 ## Xác thực (JWT)
 
-- **Mặc định mọi route đều cần access token.** Route công khai phải gắn `@Public()` (ví dụ `/health`, `/ready`, `/auth/refresh`).
+- **Mặc định mọi route đều cần access token.** Route công khai phải gắn `@Public()` (ví dụ `/health`, `/ready`, `/auth/register`, `/auth/login`, `/auth/refresh`).
+- **Đăng ký**: `POST /api/v1/auth/register` với `{ email, password, name }` → `201`, trả access token và đặt refresh cookie (đăng nhập luôn). Email được trim và chuyển chữ thường; email đã có tài khoản (không phân biệt hoa thường) → `409 EMAIL_TAKEN`. Email mới đăng ký có `emailVerified: false`.
+- **Đăng nhập**: `POST /api/v1/auth/login` với `{ email, password }` → `200`, cùng dạng response. Sai mật khẩu, email không tồn tại hay tài khoản không có mật khẩu (chỉ OAuth) đều trả cùng một lỗi `401 INVALID_CREDENTIALS` với thời gian xử lý như nhau, nên không dò được email nào đã đăng ký.
+  - Mỗi lần đăng nhập là một family refresh token riêng (mỗi thiết bị một family). Nếu trình duyệt còn refresh cookie cũ, family đó bị thu hồi trước khi cấp cookie mới.
+- **Mật khẩu**: 8–128 ký tự, không bắt buộc kiểu ký tự. Băm bằng argon2id (`m=19456 KiB, t=2, p=1`, theo OWASP); DB chỉ lưu chuỗi PHC. Hash tạo bằng tham số cũ được băm lại khi người dùng đăng nhập thành công.
 - **Access token**: JWT ký HS256 bằng `JWT_SECRET`, sống 15 phút, chỉ chứa user id (`sub`), `jti`, issuer `forgeflow`, audience `forgeflow-api`. Gửi qua header `Authorization: Bearer <token>`; server không tra DB khi kiểm tra. Hết hạn thì API trả `401` với mã `TOKEN_EXPIRED`.
 - **Refresh token**: chuỗi ngẫu nhiên 32 byte trong cookie `ff_refresh` (`HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`). Khi `COOKIE_SECURE` bật (mặc định ở production), cookie có thêm `Secure` và tên `__Secure-ff_refresh`. DB (bảng `refresh_tokens`) chỉ lưu hash SHA-256.
 - **Xoay vòng**: mỗi lần `POST /api/v1/auth/refresh`, refresh token cũ bị thay bằng token mới cùng "family".

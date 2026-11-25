@@ -16,6 +16,7 @@
     "@nestjs/common": "^12.6.0",
     "@nestjs/core": "^12.6.0",
     "@nestjs/platform-express": "^12.6.0",
+    "@node-rs/argon2": "^2.2.2",
     "cookie-parser": "^1.4.7",
     "jose": "^6.2.18",
     "nestjs-pino": "^5.3.2",

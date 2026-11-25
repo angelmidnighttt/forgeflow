@@ -1,9 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { TokenResponse } from '@forgeflow/contracts';
+import type { LoginRequest, RegisterRequest, TokenResponse } from '@forgeflow/contracts';
 import type { User } from '@forgeflow/database';
-import type { ClientInfo, IssuedTokens, RefreshOutcome } from '../../common/types/auth.types.js';
+import type {
+  ClientInfo,
+  IssuedTokens,
+  LoginOutcome,
+  RefreshOutcome,
+  RegisterOutcome,
+} from '../../common/types/auth.types.js';
 import { toAuthUser, UsersService } from '../users/users.service.js';
 import { AccessTokenService } from './access-token.service.js';
+import { PasswordService } from './password.service.js';
 import { RefreshTokenService } from './refresh-token.service.js';
 
 @Injectable()
@@ -11,8 +18,29 @@ export class AuthService {
   constructor(
     @Inject(AccessTokenService) private readonly accessTokens: AccessTokenService,
     @Inject(RefreshTokenService) private readonly refreshTokens: RefreshTokenService,
+    @Inject(PasswordService) private readonly passwords: PasswordService,
     @Inject(UsersService) private readonly users: UsersService,
   ) {}
+
+  /** Creates an email + password account and signs it in. The email starts unverified. */
+  async register(input: RegisterRequest, client: ClientInfo = {}): Promise<RegisterOutcome> {
+    const passwordHash = await this.passwords.hash(input.password);
+    const user = await this.users.create({ email: input.email, name: input.name, passwordHash });
+    if (!user) return { status: 'email_taken' };
+    return { status: 'registered', tokens: await this.issueTokens(user, client) };
+  }
+
+  /** Checks email + password and signs the user in. */
+  async login(input: LoginRequest, client: ClientInfo = {}): Promise<LoginOutcome> {
+    const user = await this.users.findByEmail(input.email);
+    const passwordOk = await this.passwords.verify(user?.passwordHash, input.password);
+    if (!user?.passwordHash || !passwordOk) return { status: 'invalid_credentials' };
+
+    if (this.passwords.needsRehash(user.passwordHash)) {
+      await this.users.updatePasswordHash(user.id, await this.passwords.hash(input.password));
+    }
+    return { status: 'signed_in', tokens: await this.issueTokens(user, client) };
+  }
 
   /** Signs `user` in: starts a refresh token family and issues the first access token. */
   async issueTokens(user: User, client: ClientInfo = {}): Promise<IssuedTokens> {

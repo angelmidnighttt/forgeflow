@@ -6,6 +6,7 @@ import { API_ENV, CLOCK } from './common/constants/injection-tokens.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { OriginGuard } from './common/guards/origin.guard.js';
+import { RateLimitGuard } from './common/guards/rate-limit.guard.js';
 import { EnvelopeInterceptor } from './common/interceptors/envelope.interceptor.js';
 import { systemClock } from './common/utils/clock.util.js';
 import { resolveRequestId } from './common/utils/request-id.util.js';
@@ -13,6 +14,7 @@ import type { ApiEnv } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { RateLimitModule } from './modules/rate-limit/rate-limit.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
 @Module({})
@@ -42,6 +44,7 @@ export class AppModule {
           },
         }),
         DatabaseModule,
+        RateLimitModule,
         UsersModule,
         AuthModule,
         HealthModule,
@@ -49,9 +52,11 @@ export class AppModule {
       ],
       providers: [
         { provide: APP_FILTER, useClass: HttpExceptionFilter },
-        // Guards run in this order: who is calling, then whether a state change is allowed.
+        // Guards run in this order: who is calling, whether a state change is allowed from
+        // where it came, then whether the caller is within the route's rate limits.
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_GUARD, useClass: OriginGuard },
+        { provide: APP_GUARD, useClass: RateLimitGuard },
         { provide: APP_INTERCEPTOR, useClass: EnvelopeInterceptor },
       ],
     };

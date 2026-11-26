@@ -3,7 +3,6 @@ import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { sessionSchema, type Session } from '@forgeflow/contracts';
 import { z } from 'zod';
-import request from 'supertest';
 import { createApp } from '../../../src/app.factory.js';
 import {
   bearer,
@@ -14,10 +13,11 @@ import {
   registerUser,
   setCookieLines,
   type SignedIn,
+  client,
 } from '../../support/http.js';
 
 let app: INestApplication;
-const http = () => request(app.getHttpServer());
+const http = () => client(app);
 
 beforeAll(async () => {
   app = await createApp(envFor());

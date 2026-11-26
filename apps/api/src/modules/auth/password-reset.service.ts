@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { DatabaseHandle, User } from '@forgeflow/database';
 import { CLOCK, DATABASE } from '../../common/constants/injection-tokens.js';
+import { RATE_LIMITS } from '../../common/constants/rate-limit.constants.js';
 import type { Clock } from '../../common/types/clock.types.js';
+import { RateLimitService } from '../rate-limit/rate-limit.service.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthMailService } from './auth-mail.service.js';
 import { PasswordService } from './password.service.js';
@@ -19,6 +21,7 @@ export class PasswordResetService {
     @Inject(PasswordService) private readonly passwords: PasswordService,
     @Inject(RefreshTokenService) private readonly refreshTokens: RefreshTokenService,
     @Inject(AuthMailService) private readonly authMail: AuthMailService,
+    @Inject(RateLimitService) private readonly rateLimits: RateLimitService,
   ) {}
 
   /**
@@ -28,6 +31,10 @@ export class PasswordResetService {
    * reveals whether the account exists.
    */
   async requestReset(email: string): Promise<void> {
+    // Counted per address whether or not it has an account, and enforced silently: the
+    // response stays 204, but nobody can flood an inbox with reset emails.
+    const limit = await this.rateLimits.hit(RATE_LIMITS.forgotPasswordPerEmail, email);
+    if (!limit.allowed) return;
     const user = await this.users.findByEmail(email);
     if (!user) return;
     void this.authMail.trySend('password reset', async () => {
@@ -56,6 +63,8 @@ export class PasswordResetService {
       return user;
     });
     if (!user) return false;
+    // Whoever reset the password owns the inbox: lift a login lockout an attacker caused.
+    await this.rateLimits.reset(RATE_LIMITS.loginPerEmail, user.email);
     void this.authMail.trySend('password changed', () => this.authMail.sendPasswordChanged(user));
     return true;
   }

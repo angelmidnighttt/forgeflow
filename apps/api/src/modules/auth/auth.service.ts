@@ -7,6 +7,7 @@ import type {
 } from '@forgeflow/contracts';
 import type { DatabaseHandle, User } from '@forgeflow/database';
 import { DATABASE } from '../../common/constants/injection-tokens.js';
+import { RATE_LIMITS } from '../../common/constants/rate-limit.constants.js';
 import type {
   ChangePasswordOutcome,
   ClientInfo,
@@ -15,6 +16,7 @@ import type {
   RefreshOutcome,
   RegisterOutcome,
 } from '../../common/types/auth.types.js';
+import { RateLimitService } from '../rate-limit/rate-limit.service.js';
 import { toAuthUser, UsersService } from '../users/users.service.js';
 import { AccessTokenService } from './access-token.service.js';
 import { AuthMailService } from './auth-mail.service.js';
@@ -32,6 +34,7 @@ export class AuthService {
     @Inject(UsersService) private readonly users: UsersService,
     @Inject(EmailVerificationService) private readonly emailVerification: EmailVerificationService,
     @Inject(AuthMailService) private readonly authMail: AuthMailService,
+    @Inject(RateLimitService) private readonly rateLimits: RateLimitService,
   ) {}
 
   /**
@@ -47,12 +50,20 @@ export class AuthService {
     return { status: 'registered', tokens: await this.issueTokens(user, client) };
   }
 
-  /** Checks email + password and signs the user in. */
+  /**
+   * Checks email + password and signs the user in. Attempts are counted per email (account or
+   * not) since its last successful login; past the limit the email is locked for the rest of
+   * the window, even with the right password, and no password is checked.
+   */
   async login(input: LoginRequest, client: ClientInfo = {}): Promise<LoginOutcome> {
+    const attempt = await this.rateLimits.hit(RATE_LIMITS.loginPerEmail, input.email);
+    if (!attempt.allowed) return { status: 'locked', retryAfterSeconds: attempt.retryAfterSeconds };
+
     const user = await this.users.findByEmail(input.email);
     const passwordOk = await this.passwords.verify(user?.passwordHash, input.password);
     if (!user?.passwordHash || !passwordOk) return { status: 'invalid_credentials' };
 
+    await this.rateLimits.reset(RATE_LIMITS.loginPerEmail, input.email);
     if (this.passwords.needsRehash(user.passwordHash)) {
       await this.users.updatePasswordHash(user.id, await this.passwords.hash(input.password));
     }

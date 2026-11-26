@@ -85,10 +85,11 @@ apps/api/src/
   config/env.ts         Biến môi trường (zod)
   database/             DatabaseModule (pool + Drizzle)
   common/
-    constants/          Hằng số: injection token, metadata key, API prefix, chính sách token, cookie
-    decorators/         @Public(), @CurrentAuth()
+    constants/          Hằng số: injection token, metadata key, API prefix, chính sách token,
+                        cookie, rate limit
+    decorators/         @Public(), @CurrentAuth(), @RateLimit()
     filters/            HttpExceptionFilter (bọc lỗi thành { error })
-    guards/             JwtAuthGuard, OriginGuard (CSRF)
+    guards/             JwtAuthGuard, OriginGuard (CSRF), RateLimitGuard
     interceptors/       EnvelopeInterceptor (bọc kết quả thành { data })
     pipes/              ZodValidationPipe
     templates/          Template email (layout chung, xác minh, đặt lại / đã đổi mật khẩu)
@@ -101,6 +102,7 @@ apps/api/src/
                         EmailVerification, PasswordReset, AuthMail, RefreshCookie
     users/              UsersService
     mail/               MailService (gửi email qua SMTP)
+    rate-limit/         RateLimitService (bộ đếm cửa sổ cố định trong PostgreSQL)
     health/             HealthController (/health, /ready)
 ```
 
@@ -167,8 +169,26 @@ Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules
 - Link trong email có dạng `<APP_ORIGIN>/verify-email#token=…` và `<APP_ORIGIN>/reset-password#token=…`. Token nằm sau `#` nên không bao giờ tới server của web hay header `Referer`; trang web đọc token rồi gọi API.
 - Token 32 byte ngẫu nhiên, DB (bảng `user_tokens`) chỉ lưu hash SHA-256. Mỗi token dùng một lần, chỉ còn hiệu lực khi email của tài khoản vẫn là địa chỉ đã nhận link, và chỉ link mới nhất của mỗi loại dùng được.
 - Link xác minh sống 24 giờ, link đặt lại mật khẩu 1 giờ. Link sai / hết hạn / đã dùng → `400 INVALID_TOKEN`.
-- Đặt lại mật khẩu cũng đánh dấu email đã xác minh (link chứng minh quyền với hộp thư).
+- Đặt lại mật khẩu cũng đánh dấu email đã xác minh (link chứng minh quyền với hộp thư) và mở khoá đăng nhập nếu đang bị khoá.
 - "Quên mật khẩu" luôn trả `204` và tạo token + gửi email ở nền, nên cả nội dung lẫn thời gian phản hồi đều không tiết lộ email có tài khoản hay không.
+
+### Rate limit
+
+Vượt giới hạn → `429 RATE_LIMITED` kèm header `Retry-After` (giây). Bộ đếm cửa sổ cố định nằm trong PostgreSQL (bảng `rate_limit_counters`, chuyển sang Redis ở Phase 11). Giới hạn nằm ở `common/constants/rate-limit.constants.ts`:
+
+| Giới hạn                            | Mức                                           |
+| ----------------------------------- | --------------------------------------------- |
+| Đăng nhập theo IP                   | 30 lần / 15 phút                              |
+| Đăng nhập theo email (khoá tạm)     | 10 lần / 15 phút                              |
+| Đăng ký theo IP                     | 10 lần / giờ                                  |
+| Quên mật khẩu theo IP               | 10 lần / giờ                                  |
+| Email đặt lại mật khẩu theo địa chỉ | 3 email / giờ (vượt thì vẫn `204`, không gửi) |
+| Dùng link email theo IP             | 30 lần / 15 phút                              |
+| Gửi lại email xác minh theo user    | 3 lần / giờ                                   |
+| Đổi mật khẩu theo user              | 5 lần / 15 phút                               |
+
+- **Khoá tạm**: đếm số lần thử của một email kể từ lần đăng nhập thành công gần nhất; quá giới hạn thì email bị khoá tới hết cửa sổ, kể cả khi nhập đúng mật khẩu. Áp dụng cả với email không có tài khoản nên không dò được. Đặt lại mật khẩu mở khoá.
+- **Sau reverse proxy phải đặt `TRUST_PROXY`** (số hop, ví dụ `1`, hoặc địa chỉ proxy). Không đặt thì `X-Forwarded-For` bị bỏ qua — an toàn, nhưng sau proxy mọi người dùng sẽ chung IP của proxy và chung bộ đếm. Ở local, `.env.example` đặt `loopback` vì web dev server proxy `/api`.
 
 ### CSRF và production
 

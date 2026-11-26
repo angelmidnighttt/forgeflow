@@ -83,4 +83,7 @@ export type ChangePasswordOutcome =
 
 /** `invalid_credentials` covers an unknown email, a wrong password and an OAuth-only account. */
 export type LoginOutcome =
-  { status: 'signed_in'; tokens: IssuedTokens } | { status: 'invalid_credentials' };
+  | { status: 'signed_in'; tokens: IssuedTokens }
+  | { status: 'invalid_credentials' }
+  /** Too many attempts for this email; try again after `retryAfterSeconds`. */
+  | { status: 'locked'; retryAfterSeconds: number };

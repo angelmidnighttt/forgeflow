@@ -11,6 +11,8 @@ import {
 import { ErrorCode, verifyEmailRequestSchema, type VerifyEmailRequest } from '@forgeflow/contracts';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator.js';
+import { RATE_LIMITS } from '../../common/constants/rate-limit.constants.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import type { AuthContext } from '../../common/types/auth.types.js';
 import { invalidLink, signInRequired } from '../../common/utils/auth-errors.util.js';
@@ -27,6 +29,7 @@ export class EmailVerificationController {
    * browser that is not signed in; the token alone proves the inbox.
    */
   @Public()
+  @RateLimit(RATE_LIMITS.emailLinkPerIp)
   @Post()
   @HttpCode(HttpStatus.NO_CONTENT)
   async verify(
@@ -36,6 +39,7 @@ export class EmailVerificationController {
   }
 
   /** Emails a new verification link to the signed-in user; earlier links stop working. */
+  @RateLimit(RATE_LIMITS.resendVerificationPerUser)
   @Post('resend')
   @HttpCode(HttpStatus.NO_CONTENT)
   async resend(@CurrentAuth() auth: AuthContext): Promise<void> {

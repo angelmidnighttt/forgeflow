@@ -3,9 +3,15 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { authUserSchema } from '@forgeflow/contracts';
 import { createDatabase, users, userTokens, type DatabaseHandle } from '@forgeflow/database';
 import { eq } from 'drizzle-orm';
-import request from 'supertest';
 import { createApp } from '../../../src/app.factory.js';
-import { APP_ORIGIN, bearer, envFor, registerUser, type SignedIn } from '../../support/http.js';
+import {
+  APP_ORIGIN,
+  bearer,
+  envFor,
+  registerUser,
+  type SignedIn,
+  client,
+} from '../../support/http.js';
 import { linkIn, testSmtpUrl, waitForEmailTo } from '../../support/mailpit.js';
 import { testDatabaseUrl } from '../../support/test-database.js';
 
@@ -13,7 +19,7 @@ const SUBJECT = 'Verify your email';
 
 let database: DatabaseHandle;
 let app: INestApplication;
-const http = () => request(app.getHttpServer());
+const http = () => client(app);
 
 beforeAll(async () => {
   database = createDatabase(testDatabaseUrl(), { max: 2 });
@@ -137,7 +143,7 @@ describe('email verification with the SMTP server down', () => {
     const user = await registerUser(downApp);
     expect(user.body.user.emailVerified).toBe(false);
 
-    const res = await request(downApp.getHttpServer())
+    const res = await client(downApp)
       .post('/api/v1/auth/verify-email/resend')
       .set('Authorization', bearer(user))
       .expect(503);

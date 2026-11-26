@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { tokenResponseSchema, type TokenResponse } from '@forgeflow/contracts';
 import request from 'supertest';
@@ -22,7 +22,29 @@ export function envFor(overrides: Partial<ApiEnv> = {}): ApiEnv {
     // Nothing listens here: tests that send email pass the Mailpit URL instead.
     SMTP_URL: 'smtp://127.0.0.1:1',
     MAIL_FROM: 'ForgeFlow <no-reply@forgeflow.test>',
+    // Trust X-Forwarded-For from supertest, so client() can give each request its own address.
+    TRUST_PROXY: 'loopback',
     ...overrides,
+  };
+}
+
+/** A random address in 10.0.0.0/8, standing in for a distinct client. */
+export function randomIp(): string {
+  return `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`;
+}
+
+/**
+ * supertest for `app`, with every request coming from `ip` (X-Forwarded-For). All test files
+ * share one database and so one set of rate limit counters; by default each request gets a
+ * random address so per-IP limits only trigger in the tests that pass a fixed one.
+ */
+export function client(app: INestApplication, ip?: string) {
+  const server = app.getHttpServer();
+  const from = (test: request.Test) => test.set('X-Forwarded-For', ip ?? randomIp());
+  return {
+    get: (path: string) => from(request(server).get(path)),
+    post: (path: string) => from(request(server).post(path)),
+    delete: (path: string) => from(request(server).delete(path)),
   };
 }
 
@@ -74,7 +96,7 @@ export async function registerUser(
   options: { email?: string; password?: string; name?: string; cookieName?: string } = {},
 ): Promise<SignedIn> {
   const email = options.email ?? uniqueEmail();
-  const res = await request(app.getHttpServer())
+  const res = await client(app)
     .post('/api/v1/auth/register')
     .send({
       email,
@@ -91,10 +113,7 @@ export async function loginUser(
   email: string,
   password = TEST_PASSWORD,
 ): Promise<SignedIn> {
-  const res = await request(app.getHttpServer())
-    .post('/api/v1/auth/login')
-    .send({ email, password })
-    .expect(200);
+  const res = await client(app).post('/api/v1/auth/login').send({ email, password }).expect(200);
   return signedIn(res, email, 'ff_refresh');
 }
 

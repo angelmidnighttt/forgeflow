@@ -3,7 +3,6 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { authUserSchema, tokenResponseSchema } from '@forgeflow/contracts';
 import { createDatabase, refreshTokens, type DatabaseHandle } from '@forgeflow/database';
 import { eq } from 'drizzle-orm';
-import request from 'supertest';
 import { createApp } from '../../../src/app.factory.js';
 import { TOKEN_POLICY } from '../../../src/common/constants/auth.constants.js';
 import { hashSecretToken } from '../../../src/common/utils/secret-token.util.js';
@@ -15,6 +14,7 @@ import {
   envFor,
   registerUser,
   setCookieLines,
+  client,
 } from '../../support/http.js';
 import { createUser, testDatabaseUrl } from '../../support/test-database.js';
 
@@ -30,7 +30,7 @@ afterAll(async () => {
 
 describe('JWT access tokens and refresh cookie', () => {
   let app: INestApplication;
-  const http = () => request(app.getHttpServer());
+  const http = () => client(app);
   const signIn = () => registerUser(app);
 
   beforeAll(async () => {

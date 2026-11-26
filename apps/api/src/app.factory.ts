@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import type { DynamicModule, INestApplication, Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
@@ -17,10 +18,13 @@ export async function createApp(
   env: ApiEnv,
   options: CreateAppOptions = {},
 ): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule.forRoot(env, options.imports), {
-    bufferLogs: true,
-  });
+  const app = await NestFactory.create<NestExpressApplication>(
+    AppModule.forRoot(env, options.imports),
+    { bufferLogs: true },
+  );
   app.useLogger(app.get(Logger));
+  // Without it, X-Forwarded-For is ignored and req.ip is the address of the TCP peer.
+  if (env.TRUST_PROXY !== undefined) app.set('trust proxy', env.TRUST_PROXY);
   app.use(cookieParser());
   app.setGlobalPrefix(API_PREFIX);
   app.enableShutdownHooks();

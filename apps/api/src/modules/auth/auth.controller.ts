@@ -23,10 +23,13 @@ import {
 import type { Request, Response } from 'express';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator.js';
+import { RATE_LIMITS } from '../../common/constants/rate-limit.constants.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import type { AuthContext, IssuedTokens } from '../../common/types/auth.types.js';
 import { signInRequired } from '../../common/utils/auth-errors.util.js';
 import { clientInfoFrom } from '../../common/utils/client-info.util.js';
+import { tooManyRequests } from '../../common/utils/rate-limit.util.js';
 import { toAuthUser, UsersService } from '../users/users.service.js';
 import { AuthService, toTokenResponse } from './auth.service.js';
 import { RefreshCookieService } from './refresh-cookie.service.js';
@@ -41,6 +44,7 @@ export class AuthController {
 
   /** Creates an account with email + password and signs it in. */
   @Public()
+  @RateLimit(RATE_LIMITS.registerPerIp)
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   async register(
@@ -60,6 +64,7 @@ export class AuthController {
 
   /** Signs in with email + password. */
   @Public()
+  @RateLimit(RATE_LIMITS.loginPerIp)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -68,13 +73,21 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<TokenResponse> {
     const outcome = await this.auth.login(body, clientInfoFrom(req));
-    if (outcome.status === 'invalid_credentials') {
-      throw new UnauthorizedException({
-        code: ErrorCode.InvalidCredentials,
-        message: 'Email or password is incorrect.',
-      });
+    switch (outcome.status) {
+      case 'signed_in':
+        return this.startSignIn(req, res, outcome.tokens);
+      case 'invalid_credentials':
+        throw new UnauthorizedException({
+          code: ErrorCode.InvalidCredentials,
+          message: 'Email or password is incorrect.',
+        });
+      case 'locked':
+        throw tooManyRequests(
+          res,
+          outcome.retryAfterSeconds,
+          'Too many sign-in attempts for this email. Try again later or reset your password.',
+        );
     }
-    return this.startSignIn(req, res, outcome.tokens);
   }
 
   /** Exchanges the refresh cookie for a new access token and a replacement refresh cookie. */

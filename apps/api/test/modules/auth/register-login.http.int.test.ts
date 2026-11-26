@@ -4,7 +4,6 @@ import { tokenResponseSchema } from '@forgeflow/contracts';
 import { createDatabase, refreshTokens, users, type DatabaseHandle } from '@forgeflow/database';
 import { hash as argon2Hash } from '@node-rs/argon2';
 import { eq, sql } from 'drizzle-orm';
-import request from 'supertest';
 import { createApp } from '../../../src/app.factory.js';
 import { hashSecretToken } from '../../../src/common/utils/secret-token.util.js';
 import {
@@ -14,12 +13,13 @@ import {
   setCookieLines,
   TEST_PASSWORD,
   uniqueEmail,
+  client,
 } from '../../support/http.js';
 import { createUser, testDatabaseUrl } from '../../support/test-database.js';
 
 let database: DatabaseHandle;
 let app: INestApplication;
-const http = () => request(app.getHttpServer());
+const http = () => client(app);
 
 beforeAll(async () => {
   database = createDatabase(testDatabaseUrl(), { max: 2 });

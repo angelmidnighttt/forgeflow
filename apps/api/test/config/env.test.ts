@@ -37,6 +37,17 @@ describe('apiEnvSchema', () => {
     }
   });
 
+  it('reads TRUST_PROXY as Express expects it', () => {
+    const parse = (value?: string) =>
+      apiEnvSchema.parse({ ...valid, TRUST_PROXY: value }).TRUST_PROXY;
+    expect(parse(undefined)).toBeUndefined();
+    expect(parse('false')).toBeUndefined();
+    expect(parse('true')).toBe(true);
+    expect(parse('1')).toBe(1);
+    expect(parse('loopback')).toBe('loopback');
+    expect(parse('10.0.0.0/8, 172.16.0.1')).toBe('10.0.0.0/8, 172.16.0.1');
+  });
+
   it('rejects a MAIL_FROM that is not an address', () => {
     for (const from of [undefined, '', 'ForgeFlow', 'ForgeFlow <no-reply>', 'a@b, c@d']) {
       expect(issuesFor({ MAIL_FROM: from })).toEqual(['MAIL_FROM']);

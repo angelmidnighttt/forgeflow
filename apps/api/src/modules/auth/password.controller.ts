@@ -23,6 +23,8 @@ import {
 import type { Request, Response } from 'express';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator.js';
+import { RATE_LIMITS } from '../../common/constants/rate-limit.constants.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import type { AuthContext } from '../../common/types/auth.types.js';
 import { invalidLink, signInRequired } from '../../common/utils/auth-errors.util.js';
@@ -44,6 +46,7 @@ export class PasswordController {
    * tells whether an account exists.
    */
   @Public()
+  @RateLimit(RATE_LIMITS.forgotPasswordPerIp)
   @Post('forgot')
   @HttpCode(HttpStatus.NO_CONTENT)
   async forgot(
@@ -54,6 +57,7 @@ export class PasswordController {
 
   /** Sets a new password with the token from the reset link and signs out every device. */
   @Public()
+  @RateLimit(RATE_LIMITS.emailLinkPerIp)
   @Post('reset')
   @HttpCode(HttpStatus.NO_CONTENT)
   async reset(
@@ -66,6 +70,7 @@ export class PasswordController {
    * Changes the password of the signed-in user. Every other device is signed out; this one
    * gets a new sign-in (access token in the body, refresh cookie replaced).
    */
+  @RateLimit(RATE_LIMITS.changePasswordPerUser)
   @Post('change')
   @HttpCode(HttpStatus.OK)
   async change(

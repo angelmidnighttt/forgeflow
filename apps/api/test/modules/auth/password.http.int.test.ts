@@ -3,7 +3,6 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { tokenResponseSchema } from '@forgeflow/contracts';
 import { createDatabase, users, userTokens, type DatabaseHandle } from '@forgeflow/database';
 import { eq } from 'drizzle-orm';
-import request from 'supertest';
 import { createApp } from '../../../src/app.factory.js';
 import {
   APP_ORIGIN,
@@ -15,6 +14,7 @@ import {
   setCookieLines,
   TEST_PASSWORD,
   uniqueEmail,
+  client,
 } from '../../support/http.js';
 import { countEmailsTo, linkIn, testSmtpUrl, waitForEmailTo } from '../../support/mailpit.js';
 import { createUser, testDatabaseUrl } from '../../support/test-database.js';
@@ -25,7 +25,7 @@ const NEW_PASSWORD = 'a brand new passphrase';
 
 let database: DatabaseHandle;
 let app: INestApplication;
-const http = () => request(app.getHttpServer());
+const http = () => client(app);
 
 beforeAll(async () => {
   database = createDatabase(testDatabaseUrl(), { max: 2 });

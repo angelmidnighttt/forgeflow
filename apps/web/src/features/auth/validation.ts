@@ -12,6 +12,7 @@ const FIELD_LABELS: Record<string, string> = {
   currentPassword: 'mật khẩu hiện tại',
   newPassword: 'mật khẩu mới',
   name: 'tên',
+  role: 'vai trò',
   token: 'link',
 };
 

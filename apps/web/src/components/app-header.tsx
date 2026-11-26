@@ -7,27 +7,38 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuth, useSignedInUser } from '@/features/auth/auth-provider';
+import { OrgSwitcher } from '@/features/organizations/components/org-switcher';
+import { useRouteOrganization } from '@/features/organizations/organizations-provider';
 import { cn } from '@/lib/utils';
 import { Logo } from './logo';
 
-const NAV = [
-  { href: '/', label: 'Tổng quan' },
-  { href: '/account', label: 'Tài khoản' },
-];
-
-/** Top bar of the signed-in pages: navigation, who is signed in, and sign-out. */
+/** Top bar of the signed-in pages: organization, its sections, the account and sign-out. */
 export function AppHeader() {
   const user = useSignedInUser();
   const { signOut } = useAuth();
   const pathname = usePathname();
+  const organization = useRouteOrganization();
   const [leaving, setLeaving] = useState(false);
+
+  const nav = [
+    ...(organization
+      ? [
+          { href: `/orgs/${organization.id}`, label: 'Tổng quan' },
+          { href: `/orgs/${organization.id}/members`, label: 'Thành viên' },
+          { href: `/orgs/${organization.id}/settings`, label: 'Cài đặt' },
+        ]
+      : []),
+    { href: '/account', label: 'Tài khoản' },
+  ];
 
   return (
     <header className="border-b bg-background">
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-6 px-6">
+      <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-6">
         <Logo />
-        <nav className="flex items-center gap-1 text-sm">
-          {NAV.map((item) => (
+        <span className="text-muted-foreground">/</span>
+        <OrgSwitcher />
+        <nav className="ml-4 hidden items-center gap-1 text-sm md:flex">
+          {nav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -41,7 +52,7 @@ export function AppHeader() {
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-3">
-          <span className="hidden text-sm text-muted-foreground sm:inline">{user.email}</span>
+          <span className="hidden text-sm text-muted-foreground lg:inline">{user.email}</span>
           <Button
             variant="ghost"
             size="sm"
@@ -56,6 +67,21 @@ export function AppHeader() {
           </Button>
         </div>
       </div>
+      {/* Small screens: the sections go on a second row. */}
+      <nav className="mx-auto flex w-full max-w-5xl gap-1 overflow-x-auto px-4 pb-2 text-sm md:hidden">
+        {nav.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              'shrink-0 rounded-md px-3 py-1.5 text-muted-foreground hover:bg-muted',
+              pathname === item.href && 'bg-muted font-medium text-foreground',
+            )}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
     </header>
   );
 }

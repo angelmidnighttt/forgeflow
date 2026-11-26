@@ -27,7 +27,7 @@ export class NetworkError extends Error {
 }
 
 export interface ApiRequestOptions {
-  method?: 'GET' | 'POST' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Sent as `Authorization: Bearer <token>`. */
   accessToken?: string;

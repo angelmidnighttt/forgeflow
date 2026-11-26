@@ -15,6 +15,12 @@ const MESSAGES: Partial<Record<string, string>> = {
   [ErrorCode.PasswordNotSet]:
     'Tài khoản chưa có mật khẩu (bạn đăng nhập bằng GitHub). Dùng "Quên mật khẩu" để đặt mật khẩu.',
   [ErrorCode.EmailAlreadyVerified]: 'Email của bạn đã được xác minh.',
+  [ErrorCode.EmailNotVerified]: 'Hãy xác minh email của bạn trước (mở link trong hộp thư).',
+  [ErrorCode.RoleNotAllowed]: 'Vai trò của bạn không được phép làm việc này.',
+  [ErrorCode.LastOwner]:
+    'Organization cần ít nhất một chủ sở hữu. Hãy cho người khác làm chủ sở hữu trước.',
+  [ErrorCode.AlreadyMember]: 'Người này đã là thành viên của organization.',
+  [ErrorCode.InvitationEmailMismatch]: 'Lời mời này được gửi tới một email khác.',
   [ErrorCode.Unauthorized]: 'Phiên đăng nhập đã hết. Hãy đăng nhập lại.',
   [ErrorCode.TokenExpired]: 'Phiên đăng nhập đã hết. Hãy đăng nhập lại.',
   [ErrorCode.OriginNotAllowed]: 'Yêu cầu bị chặn vì không được gửi từ trang ForgeFlow.',

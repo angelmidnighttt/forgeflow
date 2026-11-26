@@ -25,7 +25,12 @@ export function RegisterForm() {
   const { acceptSignIn } = useAuth();
   useRedirectWhenSignedIn(next);
 
-  const [values, setValues] = useState({ name: '', email: '', password: '' });
+  // An invitation link sends invitees here with the invited address filled in.
+  const [values, setValues] = useState({
+    name: '',
+    email: params.get('email') ?? '',
+    password: '',
+  });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [emailTaken, setEmailTaken] = useState(false);

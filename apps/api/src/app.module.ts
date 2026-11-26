@@ -5,6 +5,7 @@ import { QUIET_PATHS, REDACTED_LOG_PATHS } from './common/constants/http.constan
 import { API_ENV, CLOCK } from './common/constants/injection-tokens.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
+import { OrgPermissionGuard } from './common/guards/org-permission.guard.js';
 import { OriginGuard } from './common/guards/origin.guard.js';
 import { RateLimitGuard } from './common/guards/rate-limit.guard.js';
 import { EnvelopeInterceptor } from './common/interceptors/envelope.interceptor.js';
@@ -14,6 +15,7 @@ import type { ApiEnv } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
@@ -47,6 +49,7 @@ export class AppModule {
         RateLimitModule,
         UsersModule,
         AuthModule,
+        OrganizationsModule,
         HealthModule,
         ...extraImports,
       ],
@@ -57,6 +60,8 @@ export class AppModule {
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: APP_GUARD, useClass: OriginGuard },
         { provide: APP_GUARD, useClass: RateLimitGuard },
+        // Last: the caller's role in the organization of the route (@RequirePermission).
+        { provide: APP_GUARD, useClass: OrgPermissionGuard },
         { provide: APP_INTERCEPTOR, useClass: EnvelopeInterceptor },
       ],
     };

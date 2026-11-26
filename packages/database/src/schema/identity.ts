@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-
-const timestamptz = () => timestamp({ withTimezone: true, mode: 'date' });
+import { check, index, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { sqlList, timestamptz } from './columns.js';
 
 /**
  * People who can sign in. Not tenant-scoped: one user can belong to many organizations,
@@ -25,11 +24,6 @@ export const users = pgTable(
   },
   (t) => [uniqueIndex('users_email_lower_key').on(sql`lower(${t.email})`)],
 );
-
-/** `'a', 'b'` for an IN (...) list inside a CHECK constraint. Values are constants from this file. */
-function sqlList(values: readonly string[]) {
-  return sql.raw(values.map((value) => `'${value}'`).join(', '));
-}
 
 /**
  * Why a refresh token stopped working:

@@ -46,6 +46,7 @@ export const WEB_PATHS = {
   forgotPassword: '/forgot-password',
   login: '/login',
   home: '/',
+  acceptInvitation: '/invitations/accept',
 } as const;
 
 /** Random bytes in a secret token (refresh, email verification, password reset): 43 base64url characters. */

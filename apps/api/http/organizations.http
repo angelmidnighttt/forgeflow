@@ -1,0 +1,116 @@
+# Gọi thử các endpoint organization / thành viên / lời mời bằng REST Client (humao.rest-client).
+#
+# Trước tiên: đăng nhập bằng auth.http (request "Đăng nhập"), rồi chạy "Lấy access token" bên
+# dưới — REST Client giữ cookie chung, nên request đó dùng refresh cookie của lần đăng nhập ấy.
+# Tạo org và mời người cần email ĐÃ XÁC MINH (bấm link trong email ở http://localhost:8025).
+
+@baseUrl = http://localhost:4000/api/v1
+@accessToken = {{refresh.response.body.$.data.accessToken}}
+@orgId = {{createOrg.response.body.$.data.id}}
+
+
+### Lấy access token từ refresh cookie (chạy lại khi token hết hạn sau 15 phút)
+# @name refresh
+POST {{baseUrl}}/auth/refresh
+
+
+### ───────────────────────── Organization ─────────────────────────
+
+### Tạo organization → 201, bạn là owner. Email chưa xác minh → 403 EMAIL_NOT_VERIFIED
+# @name createOrg
+POST {{baseUrl}}/organizations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Công ty Thử Nghiệm"
+}
+
+### Các org của bạn, kèm vai trò của bạn trong từng org
+GET {{baseUrl}}/organizations
+Authorization: Bearer {{accessToken}}
+
+### Xem một org (thành viên mới xem được; người ngoài → 404)
+GET {{baseUrl}}/organizations/{{orgId}}
+Authorization: Bearer {{accessToken}}
+
+### Đổi tên (owner / admin; member, viewer → 403 ROLE_NOT_ALLOWED)
+PATCH {{baseUrl}}/organizations/{{orgId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Công ty Đã Đổi Tên"
+}
+
+
+### ───────────────────────── Thành viên ─────────────────────────
+
+### Danh sách thành viên (mọi vai trò)
+# @name members
+GET {{baseUrl}}/organizations/{{orgId}}/members
+Authorization: Bearer {{accessToken}}
+
+# Thành viên thứ hai trong danh sách (sau khi đã có người nhận lời mời); đổi chỉ số hoặc dán id.
+@memberId = {{members.response.body.$.data[1].userId}}
+
+### Đổi vai trò → 200. Owner đổi được mọi người; admin chỉ đổi member ↔ viewer.
+# Hạ quyền owner cuối cùng → 409 LAST_OWNER
+PATCH {{baseUrl}}/organizations/{{orgId}}/members/{{memberId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "role": "viewer"
+}
+
+### Xoá thành viên → 204 (người đó mất quyền truy cập ngay). Dùng id của chính bạn = rời org.
+DELETE {{baseUrl}}/organizations/{{orgId}}/members/{{memberId}}
+Authorization: Bearer {{accessToken}}
+
+
+### ───────────────────────── Lời mời (phía org) ─────────────────────────
+
+### Mời qua email → 201, email "… invited you to …" tới http://localhost:8025
+# Vai trò: owner / admin / member / viewer (admin chỉ mời được member, viewer)
+# @name invite
+POST {{baseUrl}}/organizations/{{orgId}}/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "email": "nguoi-duoc-moi@example.test",
+  "role": "member"
+}
+
+### Lời mời đang chờ
+GET {{baseUrl}}/organizations/{{orgId}}/invitations
+Authorization: Bearer {{accessToken}}
+
+### Thu hồi lời mời vừa gửi → 204, link trong email hết hiệu lực
+DELETE {{baseUrl}}/organizations/{{orgId}}/invitations/{{invite.response.body.$.data.id}}
+Authorization: Bearer {{accessToken}}
+
+
+### ───────────────────────── Lời mời (phía người được mời) ─────────────────────────
+# Copy phần sau `#token=` trong email mời rồi dán vào đây.
+
+@inviteToken = DAN_TOKEN_LOI_MOI_VAO_DAY
+
+### Xem lời mời (không cần đăng nhập): org, vai trò, email được mời, người mời
+POST {{baseUrl}}/invitations/lookup
+Content-Type: application/json
+
+{
+  "token": "{{inviteToken}}"
+}
+
+### Chấp nhận (cần đăng nhập bằng ĐÚNG email được mời → nếu khác: 403 INVITATION_EMAIL_MISMATCH)
+# Đăng ký / đăng nhập email được mời trong auth.http, chạy lại "Lấy access token", rồi gửi.
+POST {{baseUrl}}/invitations/accept
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "token": "{{inviteToken}}"
+}

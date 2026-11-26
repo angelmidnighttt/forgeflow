@@ -18,6 +18,16 @@ export const ErrorCode = {
   /** The account has no password yet (it signs in through OAuth); use "forgot password" to set one. */
   PasswordNotSet: 'PASSWORD_NOT_SET',
   EmailAlreadyVerified: 'EMAIL_ALREADY_VERIFIED',
+  /** The action needs a verified email (creating an organization, inviting people). */
+  EmailNotVerified: 'EMAIL_NOT_VERIFIED',
+  /** The caller's role in the organization does not allow the action. */
+  RoleNotAllowed: 'ROLE_NOT_ALLOWED',
+  /** The change would leave the organization without an owner. */
+  LastOwner: 'LAST_OWNER',
+  /** The invited email already belongs to a member of the organization. */
+  AlreadyMember: 'ALREADY_MEMBER',
+  /** The invitation was sent to another email than the signed-in user's. */
+  InvitationEmailMismatch: 'INVITATION_EMAIL_MISMATCH',
   Forbidden: 'FORBIDDEN',
   /** A state-changing request came from another site (CSRF protection). */
   OriginNotAllowed: 'ORIGIN_NOT_ALLOWED',

@@ -1,6 +1,5 @@
-import { index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
-
-const timestamptz = () => timestamp({ withTimezone: true, mode: 'date' });
+import { index, integer, pgTable, text } from 'drizzle-orm/pg-core';
+import { timestamptz } from './columns.js';
 
 /**
  * Fixed-window counters for rate limits (`login-ip:203.0.113.7`, `login-fail:ann@example.com`).

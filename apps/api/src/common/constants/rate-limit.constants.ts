@@ -35,4 +35,6 @@ export const RATE_LIMITS = {
     by: 'user',
   },
   oauthPerIp: { name: 'oauth-ip', limit: 30, windowMs: 15 * MINUTE_MS, by: 'ip' },
+  /** Invitation emails one member can send. */
+  invitePerUser: { name: 'invite-user', limit: 30, windowMs: HOUR_MS, by: 'user' },
 } as const satisfies Record<string, RateLimitRule>;

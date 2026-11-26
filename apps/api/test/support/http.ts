@@ -47,6 +47,7 @@ export function client(app: INestApplication, ip?: string) {
   return {
     get: (path: string) => from(request(server).get(path)),
     post: (path: string) => from(request(server).post(path)),
+    patch: (path: string) => from(request(server).patch(path)),
     delete: (path: string) => from(request(server).delete(path)),
   };
 }

@@ -66,7 +66,8 @@ apps/
     src/lib/        Tiện ích dùng chung (api-client, cn)
 packages/
   config/       Nạp .env và validate biến môi trường bằng zod
-  contracts/    Schema zod + kiểu dùng chung giữa api và web (envelope, auth, health)
+  contracts/    Schema zod + kiểu dùng chung giữa api và web (envelope, auth, organizations,
+                RBAC, health)
   database/     Drizzle: schema, migration, script migrate/reset/seed
 infra/
   compose/      Docker Compose cho môi trường local
@@ -88,12 +89,13 @@ apps/api/src/
   common/
     constants/          Hằng số: injection token, metadata key, API prefix, chính sách token,
                         cookie, rate limit
-    decorators/         @Public(), @CurrentAuth(), @RateLimit()
+    decorators/         @Public(), @CurrentAuth(), @RateLimit(), @RequirePermission(),
+                        @CurrentMembership()
     filters/            HttpExceptionFilter (bọc lỗi thành { error })
-    guards/             JwtAuthGuard, OriginGuard (CSRF), RateLimitGuard
+    guards/             JwtAuthGuard, OriginGuard (CSRF), RateLimitGuard, OrgPermissionGuard
     interceptors/       EnvelopeInterceptor (bọc kết quả thành { data })
     pipes/              ZodValidationPipe
-    templates/          Template email (layout chung, xác minh, đặt lại / đã đổi mật khẩu)
+    templates/          Template email (layout chung, xác minh, đặt lại / đã đổi mật khẩu, lời mời)
     types/              Kiểu dữ liệu dùng chung (AuthContext, ClientInfo, kết quả xoay token…)
     utils/              Hàm thuần: request id, clock, client info, secret token / PKCE,
                         xoay refresh token, escape HTML, link tới web app
@@ -103,6 +105,8 @@ apps/api/src/
                         EmailVerification, PasswordReset, AuthMail, GithubOAuth,
                         GithubSignIn, RefreshCookie, OAuthStateCookie
     users/              UsersService (users, tài khoản OAuth liên kết)
+    organizations/      Controller: Organizations, Members, Invitations, InvitationAcceptance
+                        Service: Organizations, Memberships, Invitations
     mail/               MailService (gửi email qua SMTP)
     rate-limit/         RateLimitService (bộ đếm cửa sổ cố định trong PostgreSQL)
     health/             HealthController (/health, /ready)
@@ -234,6 +238,41 @@ Access token của GitHub chỉ dùng để đọc profile rồi bỏ, không l�
 
 - Access token không nằm trong cookie nên request API thường không thể bị giả mạo. Thêm vào đó, mọi request `POST`/`PUT`/`PATCH`/`DELETE` bị từ chối (`403 ORIGIN_NOT_ALLOWED`) nếu trình duyệt đánh dấu `Sec-Fetch-Site: cross-site` hoặc `Origin` khác `APP_ORIGIN`. Callback GitHub được bảo vệ bằng `state`.
 - Ở production, api từ chối khởi động nếu `JWT_SECRET` ngắn hơn 32 ký tự hoặc là giá trị dev trong `.env.example`.
+
+## Organization và phân quyền
+
+Mọi thứ ForgeFlow quản lý thuộc về một organization (tenant). Một user có thể ở nhiều org, mỗi org một vai trò.
+
+| Endpoint                                              | Quyền cần             | Việc làm                                                 |
+| ----------------------------------------------------- | --------------------- | -------------------------------------------------------- |
+| `POST /api/v1/organizations`                          | email đã xác minh     | Tạo org; người tạo là owner                              |
+| `GET /api/v1/organizations`                           | đăng nhập             | Các org của mình, kèm vai trò                            |
+| `GET /api/v1/organizations/:orgId`                    | `organization.read`   | Xem org                                                  |
+| `PATCH /api/v1/organizations/:orgId`                  | `organization.update` | Đổi tên                                                  |
+| `GET /api/v1/organizations/:orgId/members`            | `members.read`        | Danh sách thành viên                                     |
+| `PATCH /api/v1/organizations/:orgId/members/:userId`  | `members.manage`      | Đổi vai trò (theo thứ bậc bên dưới)                      |
+| `DELETE /api/v1/organizations/:orgId/members/:userId` | `members.read`        | Xoá thành viên (theo thứ bậc); xoá chính mình là rời org |
+| `POST /api/v1/organizations/:orgId/invitations`       | `invitations.manage`  | Mời qua email (người mời cần email đã xác minh)          |
+| `GET /api/v1/organizations/:orgId/invitations`        | `invitations.manage`  | Lời mời đang chờ                                         |
+| `DELETE /api/v1/organizations/:orgId/invitations/:id` | `invitations.manage`  | Thu hồi lời mời                                          |
+| `POST /api/v1/invitations/lookup`                     | không                 | Xem lời mời từ token trong link                          |
+| `POST /api/v1/invitations/accept`                     | đăng nhập             | Nhận lời mời (phải đăng nhập bằng đúng email được mời)   |
+
+**Vai trò** (cao xuống thấp): `owner`, `admin`, `member`, `viewer`. Ma trận vai trò × quyền nằm ở `packages/contracts/src/rbac.ts` (`PERMISSIONS`, `can`), dùng chung cho api và web:
+
+| Quyền                 | owner | admin | member | viewer |
+| --------------------- | ----- | ----- | ------ | ------ |
+| `organization.read`   | ✓     | ✓     | ✓      | ✓      |
+| `organization.update` | ✓     | ✓     |        |        |
+| `members.read`        | ✓     | ✓     | ✓      | ✓      |
+| `members.manage`      | ✓     | ✓     |        |        |
+| `invitations.manage`  | ✓     | ✓     |        |        |
+
+- **Thứ bậc**: owner đổi vai trò / xoá / mời được mọi vai trò (kể cả owner khác). Admin chỉ quản lý và chỉ cấp được `member`, `viewer` — không đụng được admin khác hay owner. Ai cũng tự rời org được.
+- **Luôn còn ít nhất 1 owner**: hạ quyền hay xoá owner cuối cùng → `409 LAST_OWNER`. Mỗi thay đổi khoá dòng org (`SELECT … FOR UPDATE`) và đọc lại vai trò người thực hiện trong transaction, nên hai owner hạ quyền nhau cùng lúc cũng không làm org mất owner.
+- **Kiểm tra quyền** (`OrgPermissionGuard`, guard toàn cục cho route có `@RequirePermission`): org lấy từ `:orgId` trên URL, vai trò lấy từ bảng `memberships` ở **mỗi request** — không từ token, không từ body. Không phải thành viên (hoặc org không tồn tại, id sai định dạng) → `404` giống nhau; thiếu quyền → `403 ROLE_NOT_ALLOWED`. Bị xoá khỏi org là mất quyền ngay.
+- **Lời mời**: link `<APP_ORIGIN>/invitations/accept#token=…` (token sau `#`, DB chỉ lưu hash), dùng một lần, hết hạn sau 7 ngày. Mỗi email chỉ có một lời mời đang chờ trong một org: mời lại thì link cũ hết hiệu lực. Không gửi được email → `503` và lời mời bị huỷ. Nhận lời mời đánh dấu email đã xác minh (link chứng minh hộp thư); người đã là thành viên giữ nguyên vai trò.
+- Thử bằng REST Client: `apps/api/http/organizations.http`.
 
 ## Docker image
 

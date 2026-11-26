@@ -26,8 +26,12 @@ const common = {
   modulePathIgnorePatterns: ['<rootDir>/apps/web/.next/'],
   extensionsToTreatAsEsm: ['.ts'],
   transform: { '^.+\\.ts$': ['@swc/jest', swcOptions] },
-  // Source uses NodeNext-style imports ('./foo.js'); point them at the .ts file during tests.
-  moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' },
+  moduleNameMapper: {
+    // Source uses NodeNext-style imports ('./foo.js'); point them at the .ts file during tests.
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+    // The web app's import alias (paths in apps/web/tsconfig.json).
+    '^@/(.*)$': '<rootDir>/apps/web/src/$1',
+  },
 };
 
 /** @type {import('jest').Config} */

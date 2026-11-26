@@ -15,6 +15,7 @@ import {
   ErrorCode,
   loginRequestSchema,
   registerRequestSchema,
+  type AuthProviders,
   type AuthUser,
   type LoginRequest,
   type RegisterRequest,
@@ -32,6 +33,7 @@ import { clientInfoFrom } from '../../common/utils/client-info.util.js';
 import { tooManyRequests } from '../../common/utils/rate-limit.util.js';
 import { toAuthUser, UsersService } from '../users/users.service.js';
 import { AuthService, toTokenResponse } from './auth.service.js';
+import { GithubOAuthService } from './github-oauth.service.js';
 import { RefreshCookieService } from './refresh-cookie.service.js';
 
 @Controller('auth')
@@ -40,7 +42,15 @@ export class AuthController {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(UsersService) private readonly users: UsersService,
     @Inject(RefreshCookieService) private readonly cookie: RefreshCookieService,
+    @Inject(GithubOAuthService) private readonly github: GithubOAuthService,
   ) {}
+
+  /** Which sign-in methods besides email + password are turned on, for the login page. */
+  @Public()
+  @Get('providers')
+  providers(): AuthProviders {
+    return { github: this.github.enabled };
+  }
 
   /** Creates an account with email + password and signs it in. */
   @Public()

@@ -16,9 +16,11 @@ export async function loadSystemStatus(): Promise<SystemStatusSnapshot> {
   return { health, readiness, checkedAt: new Date() };
 }
 
+/** "2 giờ 5 phút", "3 phút 12 giây", "40 giây". */
 export function formatUptime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
-  return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+  if (h > 0) return `${h} giờ ${m} phút`;
+  return m > 0 ? `${m} phút ${s} giây` : `${s} giây`;
 }

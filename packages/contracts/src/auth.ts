@@ -122,3 +122,7 @@ export const OAuthError = {
   Failed: 'oauth_failed',
 } as const;
 export type OAuthError = (typeof OAuthError)[keyof typeof OAuthError];
+
+/** GET /api/v1/auth/providers: which sign-in methods besides email + password are turned on. */
+export const authProvidersSchema = z.object({ github: z.boolean() });
+export type AuthProviders = z.infer<typeof authProvidersSchema>;

@@ -26,12 +26,12 @@ npm run dev
 3. Build các package TypeScript, áp dụng migration.
 4. Chạy song song: TypeScript watch, api (tự restart khi code đổi), web.
 
-| Địa chỉ                             | Nội dung                                  |
-| ----------------------------------- | ----------------------------------------- |
-| http://localhost:3000               | Web dashboard (trang trạng thái hệ thống) |
-| http://localhost:4000/api/v1/health | Liveness của api                          |
-| http://localhost:4000/api/v1/ready  | Readiness (kiểm tra DB)                   |
-| http://localhost:8025               | Mailpit: hộp thư nhận mọi email api gửi   |
+| Địa chỉ                             | Nội dung                                       |
+| ----------------------------------- | ---------------------------------------------- |
+| http://localhost:3000               | Web: đăng nhập / đăng ký, tổng quan, tài khoản |
+| http://localhost:4000/api/v1/health | Liveness của api                               |
+| http://localhost:4000/api/v1/ready  | Readiness (kiểm tra DB)                        |
+| http://localhost:8025               | Mailpit: hộp thư nhận mọi email api gửi        |
 
 Email ở local không đi ra ngoài: api gửi qua SMTP tới Mailpit (`SMTP_URL=smtp://localhost:1025`), mở http://localhost:8025 để đọc.
 
@@ -59,13 +59,14 @@ Nếu cổng đã bị chiếm, đặt cổng khác trước khi chạy và sử
 ```text
 apps/
   api/          NestJS 12 — REST API, webhook ingress, health (xem "Cấu trúc api")
-  web/          Next.js 16 — dashboard
-    src/app/        Route (App Router)
-    src/features/   Tính năng: component + cách nạp dữ liệu của nó
-    src/lib/        Tiện ích dùng chung (api-client)
+  web/          Next.js 16 — dashboard (xem "Giao diện web")
+    src/app/        Route (App Router): (auth)/ trang đăng nhập…, (app)/ trang cần đăng nhập
+    src/features/   Tính năng: component + cách nạp dữ liệu của nó (auth, account, home…)
+    src/components/ ui/ (shadcn/ui), header, logo
+    src/lib/        Tiện ích dùng chung (api-client, cn)
 packages/
   config/       Nạp .env và validate biến môi trường bằng zod
-  contracts/    Schema zod + kiểu dùng chung giữa api và web (envelope, health)
+  contracts/    Schema zod + kiểu dùng chung giữa api và web (envelope, auth, health)
   database/     Drizzle: schema, migration, script migrate/reset/seed
 infra/
   compose/      Docker Compose cho môi trường local
@@ -115,7 +116,7 @@ apps/api/src/
 
 ## Test
 
-Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules/auth/…` ứng với `src/modules/auth/…`). Package dùng chung giữ test trong `packages/<tên>/test/`.
+Test nằm trong `apps/api/test/` và `apps/web/test/`, cùng cấu trúc với `src/` (`test/modules/auth/…` ứng với `src/modules/auth/…`). Package dùng chung giữ test trong `packages/<tên>/test/`. Ở web mới có unit test cho các hàm thuần (thông báo, validate, chặn open redirect…).
 
 - `*.test.ts`: unit test, không cần dịch vụ ngoài.
 - `*.int.test.ts`: integration test, chạy với PostgreSQL và Mailpit thật (`npm run db:up`). Trước mỗi lần chạy, Jest tạo lại một database riêng tên `<tên DB>_test` (hoặc `TEST_DATABASE_URL`) và áp dụng migration; database dev không bị đụng tới. Test email gửi qua Mailpit rồi đọc lại bằng HTTP API của nó, mỗi test dùng một địa chỉ nhận riêng.
@@ -126,6 +127,28 @@ Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules
 - Response thành công: `{ "data": ... }`. Lỗi: `{ "error": { "code", "message", "requestId", "details?" } }`, với `code` lấy từ `ErrorCode` trong `@forgeflow/contracts`.
 - Mỗi request có `X-Request-Id` (dùng lại giá trị client gửi nếu hợp lệ, nếu không thì tự sinh); id này có trong log và trong body lỗi.
 - Body / query được validate bằng `ZodValidationPipe` với schema từ `@forgeflow/contracts`.
+
+## Giao diện web
+
+`apps/web` dùng Next.js 16 (App Router), Tailwind CSS v4 và [shadcn/ui](https://ui.shadcn.com) (style `radix-nova`). Giao diện bằng tiếng Việt; font Inter có bộ ký tự tiếng Việt.
+
+| Trang              | Nội dung                                                                   |
+| ------------------ | -------------------------------------------------------------------------- |
+| `/login`           | Đăng nhập bằng email + mật khẩu hoặc GitHub (nút chỉ hiện khi đã cấu hình) |
+| `/register`        | Tạo tài khoản                                                              |
+| `/forgot-password` | Gửi link đặt lại mật khẩu                                                  |
+| `/reset-password`  | Mở từ email: đặt mật khẩu mới                                              |
+| `/verify-email`    | Mở từ email: xác minh email                                                |
+| `/`                | Tổng quan (cần đăng nhập): nhắc xác minh email, trạng thái hệ thống        |
+| `/account`         | Tài khoản (cần đăng nhập): thông tin, đổi mật khẩu, thiết bị đăng nhập     |
+
+- **Phiên đăng nhập** (`src/features/auth/auth-provider.tsx`): access token chỉ nằm trong bộ nhớ của tab, không lưu vào storage. Khi tải trang, web gọi `POST /api/v1/auth/refresh` (refresh cookie `HttpOnly`) để lấy lại; tự refresh 1 phút trước khi token hết hạn, và refresh rồi thử lại một lần khi API trả `401`.
+  - Mỗi lần refresh thay cookie, nên chỉ một lần refresh chạy tại một thời điểm: trong một tab nhờ promise dùng chung, giữa các tab nhờ Web Locks API.
+  - Đăng xuất / đăng nhập ở một tab được báo cho các tab khác qua `BroadcastChannel`.
+  - Trang cần đăng nhập nằm trong `(app)/`; `RequireAuth` chuyển khách chưa đăng nhập tới `/login?next=…` (chỉ nhận đường dẫn trong site, chống open redirect).
+- **Link trong email**: trang đọc token sau `#`, xoá nó khỏi thanh địa chỉ và lịch sử rồi mới gọi API; hai trang này đặt `Referrer-Policy: no-referrer`.
+- **Thông báo**: form validate bằng chính schema zod trong `@forgeflow/contracts` (cùng quy tắc với api), nhưng thông báo tiếng Việt được dựng từ loại lỗi và tên trường (`src/features/auth/validation.ts`). Lỗi từ api được hiển thị theo mã lỗi (`src/features/auth/messages.ts`), không dùng câu tiếng Anh của api.
+- **Thêm component shadcn**: `cd apps/web && npx shadcn@latest add <tên>` (cấu hình ở `apps/web/components.json`), rồi chạy `npm run format`.
 
 ## Xác thực
 
@@ -146,6 +169,7 @@ Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules
 | `GET /api/v1/auth/sessions`                | Có            | Các thiết bị đang đăng nhập; `current` là thiết bị gọi request                |
 | `DELETE /api/v1/auth/sessions/:id`         | Có            | Đăng xuất một thiết bị                                                        |
 | `POST /api/v1/auth/sessions/revoke-others` | Có            | Đăng xuất mọi thiết bị trừ thiết bị này                                       |
+| `GET /api/v1/auth/providers`               | Không         | Cách đăng nhập nào đang bật (`{ github }`), cho trang đăng nhập               |
 | `GET /api/v1/auth/github`                  | Không         | Bắt đầu đăng nhập bằng GitHub (chuyển hướng sang GitHub)                      |
 | `GET /api/v1/auth/github/callback`         | Không         | GitHub chuyển về đây; đăng nhập rồi chuyển về web app                         |
 

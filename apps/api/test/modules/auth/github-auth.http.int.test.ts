@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
-import { authUserSchema, tokenResponseSchema } from '@forgeflow/contracts';
+import { authProvidersSchema, authUserSchema, tokenResponseSchema } from '@forgeflow/contracts';
 import { createDatabase, oauthAccounts, users, type DatabaseHandle } from '@forgeflow/database';
 import { eq } from 'drizzle-orm';
 import { createApp } from '../../../src/app.factory.js';
@@ -102,6 +102,13 @@ async function storedUser(email: string) {
   const [user] = await database.db.select().from(users).where(eq(users.email, email));
   return user;
 }
+
+describe('GET /api/v1/auth/providers', () => {
+  it('tells the login page that GitHub sign-in is on', async () => {
+    const res = await client(app).get('/api/v1/auth/providers').expect(200);
+    expect(authProvidersSchema.parse(res.body.data)).toEqual({ github: true });
+  });
+});
 
 describe('GET /api/v1/auth/github', () => {
   it('redirects to GitHub with the client id, callback, scopes, state and a PKCE challenge', async () => {
@@ -283,12 +290,14 @@ describe('GET /api/v1/auth/github/callback', () => {
 });
 
 describe('without GitHub configured', () => {
-  it('answers 404 on both routes', async () => {
+  it('answers 404 on both routes and reports GitHub as off', async () => {
     const plain = await createApp(envFor());
     await plain.init();
     try {
       await client(plain).get('/api/v1/auth/github').expect(404);
       await client(plain).get('/api/v1/auth/github/callback?code=x&state=y').expect(404);
+      const providers = await client(plain).get('/api/v1/auth/providers').expect(200);
+      expect(providers.body.data).toEqual({ github: false });
     } finally {
       await plain.close();
     }

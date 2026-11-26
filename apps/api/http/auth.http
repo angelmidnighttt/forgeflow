@@ -185,5 +185,8 @@ Origin: https://trang-la.example
 # 3. Mở http://localhost:3000/api/v1/auth/github trong trình duyệt.
 # Chưa cấu hình thì request dưới trả 404.
 
+### Các cách đăng nhập đang bật → { github: true|false } (trang đăng nhập dùng để hiện nút GitHub)
+GET {{baseUrl}}/auth/providers
+
 ### Kiểm tra GitHub đã bật chưa (đã bật → 302 sang github.com)
 GET {{baseUrl}}/auth/github

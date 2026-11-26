@@ -26,7 +26,26 @@ export const users = pgTable(
   (t) => [uniqueIndex('users_email_lower_key').on(sql`lower(${t.email})`)],
 );
 
-export const REFRESH_TOKEN_REVOKE_REASONS = ['rotated', 'logout', 'reuse_detected'] as const;
+/** `'a', 'b'` for an IN (...) list inside a CHECK constraint. Values are constants from this file. */
+function sqlList(values: readonly string[]) {
+  return sql.raw(values.map((value) => `'${value}'`).join(', '));
+}
+
+/**
+ * Why a refresh token stopped working:
+ * - `rotated`: replaced by a newer token of the same family (normal refresh).
+ * - `logout`: the user signed out on that device (or signed in again over it).
+ * - `reuse_detected`: a replaced token came back, so a copy was stolen.
+ * - `password_changed`: the password was changed or reset; every sign-in ends.
+ * - `revoked`: the user ended that sign-in from the list of signed-in devices.
+ */
+export const REFRESH_TOKEN_REVOKE_REASONS = [
+  'rotated',
+  'logout',
+  'reuse_detected',
+  'password_changed',
+  'revoked',
+] as const;
 export type RefreshTokenRevokeReason = (typeof REFRESH_TOKEN_REVOKE_REASONS)[number];
 
 /**
@@ -61,7 +80,7 @@ export const refreshTokens = pgTable(
     index('refresh_tokens_user_id_idx').on(t.userId),
     check(
       'refresh_tokens_revoked_reason_check',
-      sql`${t.revokedReason} IS NULL OR ${t.revokedReason} IN ('rotated', 'logout', 'reuse_detected')`,
+      sql`${t.revokedReason} IS NULL OR ${t.revokedReason} IN (${sqlList(REFRESH_TOKEN_REVOKE_REASONS)})`,
     ),
     check(
       'refresh_tokens_revoked_consistent_check',
@@ -70,6 +89,38 @@ export const refreshTokens = pgTable(
   ],
 );
 
+/** What a one-time user token proves when it is used. */
+export const USER_TOKEN_PURPOSES = ['verify_email', 'reset_password'] as const;
+export type UserTokenPurpose = (typeof USER_TOKEN_PURPOSES)[number];
+
+/**
+ * One-time tokens sent by email (verify the address, reset the password). Like refresh tokens,
+ * only the SHA-256 hash of the secret is stored. A token works once, until `expires_at`, and only
+ * while the account's email is still the address it was sent to.
+ */
+export const userTokens = pgTable(
+  'user_tokens',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    purpose: text().$type<UserTokenPurpose>().notNull(),
+    tokenHash: text().notNull(),
+    /** The address the link was sent to. */
+    email: text().notNull(),
+    createdAt: timestamptz().notNull().defaultNow(),
+    expiresAt: timestamptz().notNull(),
+    usedAt: timestamptz(),
+  },
+  (t) => [
+    uniqueIndex('user_tokens_token_hash_key').on(t.tokenHash),
+    index('user_tokens_user_id_purpose_idx').on(t.userId, t.purpose),
+    check('user_tokens_purpose_check', sql`${t.purpose} IN (${sqlList(USER_TOKEN_PURPOSES)})`),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type RefreshToken = typeof refreshTokens.$inferSelect;
+export type UserToken = typeof userTokens.$inferSelect;

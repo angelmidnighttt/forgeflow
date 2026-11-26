@@ -1,12 +1,16 @@
 import type { SendMailOptions } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
 
-/** One email to one recipient. `text` is required: some clients and filters only read it. */
-export interface OutgoingEmail {
-  to: string;
+/** What a template renders. `text` is required: some clients and filters only read it. */
+export interface EmailContent {
   subject: string;
   text: string;
   html?: string;
+}
+
+/** One email to one recipient. */
+export interface OutgoingEmail extends EmailContent {
+  to: string;
 }
 
 /**

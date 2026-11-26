@@ -4,7 +4,7 @@ import { createDatabase, refreshTokens, type DatabaseHandle } from '@forgeflow/d
 import { eq } from 'drizzle-orm';
 import { TOKEN_POLICY } from '../../../src/common/constants/auth.constants.js';
 import type { IssuedRefreshToken } from '../../../src/common/types/auth.types.js';
-import { hashRefreshTokenSecret } from '../../../src/common/utils/refresh-token-secret.util.js';
+import { hashSecretToken } from '../../../src/common/utils/secret-token.util.js';
 import { RefreshTokenService } from '../../../src/modules/auth/refresh-token.service.js';
 import { createUser, testDatabaseUrl } from '../../support/test-database.js';
 
@@ -53,7 +53,7 @@ describe('RefreshTokenService', () => {
     const { issued } = await signIn();
 
     expect(issued.secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(issued.token.tokenHash).toBe(hashRefreshTokenSecret(issued.secret));
+    expect(issued.token.tokenHash).toBe(hashSecretToken(issued.secret));
     expect(issued.token.tokenHash).not.toContain(issued.secret);
     expect(issued.token.expiresAt).toEqual(at(TOKEN_POLICY.refreshIdleMs));
     expect(issued.token.familyExpiresAt).toEqual(at(TOKEN_POLICY.refreshAbsoluteMs));

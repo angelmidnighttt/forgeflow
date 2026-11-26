@@ -17,6 +17,11 @@ export interface MailpitMessage {
   HTML: string;
 }
 
+interface SearchResult {
+  messages_count: number;
+  messages: Array<{ ID: string }>;
+}
+
 async function mailpitGet<T>(path: string): Promise<T> {
   const url = new URL(path, mailpitUrl());
   let res: Response;
@@ -32,20 +37,46 @@ async function mailpitGet<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Mailpit search for mail to `address`, optionally only with `subject` in the subject line. */
+function search(address: string, subject?: string, limit = 1): Promise<SearchResult> {
+  const terms = [`to:"${address}"`, ...(subject ? [`subject:"${subject}"`] : [])].join(' ');
+  return mailpitGet<SearchResult>(
+    `/api/v1/search?query=${encodeURIComponent(terms)}&limit=${limit}`,
+  );
+}
+
+/** How many emails to `address` (with `subject` in the subject line, if given) Mailpit holds. */
+export async function countEmailsTo(address: string, subject?: string): Promise<number> {
+  return (await search(address, subject)).messages_count;
+}
+
 /**
- * Waits for the newest email to `address` and returns it in full. Each test sends to its own
- * unique address, so tests running in parallel never see each other's mail.
+ * Waits for the newest email to `address` (with `subject` in the subject line, if given) and
+ * returns it in full. Each test sends to its own unique address, so tests running in parallel
+ * never see each other's mail.
  */
-export async function waitForEmailTo(address: string, timeoutMs = 5_000): Promise<MailpitMessage> {
+export async function waitForEmailTo(
+  address: string,
+  options: { subject?: string; count?: number; timeoutMs?: number } = {},
+): Promise<MailpitMessage> {
+  const { subject, count = 1, timeoutMs = 5_000 } = options;
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const query = encodeURIComponent(`to:"${address}"`);
-    const found = await mailpitGet<{ messages: Array<{ ID: string }> }>(
-      `/api/v1/search?query=${query}&limit=1`,
-    );
+    const found = await search(address, subject);
     const id = found.messages[0]?.ID;
-    if (id) return mailpitGet<MailpitMessage>(`/api/v1/message/${id}`);
-    if (Date.now() > deadline) throw new Error(`No email to ${address} within ${timeoutMs} ms`);
+    if (id && found.messages_count >= count) {
+      return mailpitGet<MailpitMessage>(`/api/v1/message/${id}`);
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Email #${count} to ${address} (${subject ?? 'any subject'}) did not arrive`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+}
+
+/** The link with a secret in an email (`…#token=<secret>`): the full URL and the secret. */
+export function linkIn(message: MailpitMessage): { url: string; token: string } {
+  const match = /(https?:\/\/\S+#token=([A-Za-z0-9_-]{43}))/.exec(message.Text);
+  if (!match?.[1] || !match[2]) throw new Error(`No link with a token in: ${message.Text}`);
+  return { url: match[1], token: match[2] };
 }

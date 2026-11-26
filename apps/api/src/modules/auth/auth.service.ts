@@ -1,7 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { LoginRequest, RegisterRequest, TokenResponse } from '@forgeflow/contracts';
-import type { User } from '@forgeflow/database';
 import type {
+  ChangePasswordRequest,
+  LoginRequest,
+  RegisterRequest,
+  TokenResponse,
+} from '@forgeflow/contracts';
+import type { DatabaseHandle, User } from '@forgeflow/database';
+import { DATABASE } from '../../common/constants/injection-tokens.js';
+import type {
+  ChangePasswordOutcome,
   ClientInfo,
   IssuedTokens,
   LoginOutcome,
@@ -10,23 +17,33 @@ import type {
 } from '../../common/types/auth.types.js';
 import { toAuthUser, UsersService } from '../users/users.service.js';
 import { AccessTokenService } from './access-token.service.js';
+import { AuthMailService } from './auth-mail.service.js';
+import { EmailVerificationService } from './email-verification.service.js';
 import { PasswordService } from './password.service.js';
 import { RefreshTokenService } from './refresh-token.service.js';
 
 @Injectable()
 export class AuthService {
   constructor(
+    @Inject(DATABASE) private readonly database: DatabaseHandle,
     @Inject(AccessTokenService) private readonly accessTokens: AccessTokenService,
     @Inject(RefreshTokenService) private readonly refreshTokens: RefreshTokenService,
     @Inject(PasswordService) private readonly passwords: PasswordService,
     @Inject(UsersService) private readonly users: UsersService,
+    @Inject(EmailVerificationService) private readonly emailVerification: EmailVerificationService,
+    @Inject(AuthMailService) private readonly authMail: AuthMailService,
   ) {}
 
-  /** Creates an email + password account and signs it in. The email starts unverified. */
+  /**
+   * Creates an email + password account, emails the verification link and signs it in. The
+   * email starts unverified. The link is sent in the background, so a slow or unreachable SMTP
+   * server never delays or fails the sign-up; the user can ask for a new link.
+   */
   async register(input: RegisterRequest, client: ClientInfo = {}): Promise<RegisterOutcome> {
     const passwordHash = await this.passwords.hash(input.password);
     const user = await this.users.create({ email: input.email, name: input.name, passwordHash });
     if (!user) return { status: 'email_taken' };
+    void this.authMail.trySend('verification', () => this.emailVerification.send(user));
     return { status: 'registered', tokens: await this.issueTokens(user, client) };
   }
 
@@ -40,6 +57,31 @@ export class AuthService {
       await this.users.updatePasswordHash(user.id, await this.passwords.hash(input.password));
     }
     return { status: 'signed_in', tokens: await this.issueTokens(user, client) };
+  }
+
+  /**
+   * Changes the password of a signed-in user who knows the current one. Every sign-in ends,
+   * including the caller's, which gets a fresh one in the returned tokens.
+   */
+  async changePassword(
+    userId: string,
+    input: ChangePasswordRequest,
+    client: ClientInfo = {},
+  ): Promise<ChangePasswordOutcome> {
+    const user = await this.users.findById(userId);
+    if (!user) return { status: 'unknown_user' };
+    if (!user.passwordHash) return { status: 'password_not_set' };
+    if (!(await this.passwords.verify(user.passwordHash, input.currentPassword))) {
+      return { status: 'invalid_password' };
+    }
+
+    const passwordHash = await this.passwords.hash(input.newPassword);
+    await this.database.db.transaction(async (tx) => {
+      await this.users.updatePasswordHash(user.id, passwordHash, tx);
+      await this.refreshTokens.revokeAllForUser(user.id, 'password_changed', { db: tx });
+    });
+    void this.authMail.trySend('password changed', () => this.authMail.sendPasswordChanged(user));
+    return { status: 'changed', tokens: await this.issueTokens(user, client) };
   }
 
   /** Signs `user` in: starts a refresh token family and issues the first access token. */

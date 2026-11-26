@@ -6,7 +6,7 @@ import { hash as argon2Hash } from '@node-rs/argon2';
 import { eq, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { createApp } from '../../../src/app.factory.js';
-import { hashRefreshTokenSecret } from '../../../src/common/utils/refresh-token-secret.util.js';
+import { hashSecretToken } from '../../../src/common/utils/secret-token.util.js';
 import {
   cookieValue,
   envFor,
@@ -43,7 +43,7 @@ async function refreshRow(secret: string) {
   const [row] = await database.db
     .select()
     .from(refreshTokens)
-    .where(eq(refreshTokens.tokenHash, hashRefreshTokenSecret(secret)));
+    .where(eq(refreshTokens.tokenHash, hashSecretToken(secret)));
   return row;
 }
 

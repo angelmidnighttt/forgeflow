@@ -64,6 +64,13 @@ export type RefreshOutcome =
 export type RegisterOutcome =
   { status: 'registered'; tokens: IssuedTokens } | { status: 'email_taken' };
 
+export type ResendVerificationOutcome =
+  'sent' | 'already_verified' | 'send_failed' | 'unknown_user';
+
+export type ChangePasswordOutcome =
+  | { status: 'changed'; tokens: IssuedTokens }
+  | { status: 'unknown_user' | 'password_not_set' | 'invalid_password' };
+
 /** `invalid_credentials` covers an unknown email, a wrong password and an OAuth-only account. */
 export type LoginOutcome =
   { status: 'signed_in'; tokens: IssuedTokens } | { status: 'invalid_credentials' };

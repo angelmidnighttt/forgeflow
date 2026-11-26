@@ -56,17 +56,7 @@ export interface SignedIn {
   refreshCookie: string;
 }
 
-/** Registers a new account through the API, which also signs it in. */
-export async function registerUser(
-  app: INestApplication,
-  options: { email?: string; password?: string; cookieName?: string } = {},
-): Promise<SignedIn> {
-  const email = options.email ?? uniqueEmail();
-  const cookieName = options.cookieName ?? 'ff_refresh';
-  const res = await request(app.getHttpServer())
-    .post('/api/v1/auth/register')
-    .send({ email, password: options.password ?? TEST_PASSWORD, name: 'Test User' })
-    .expect(201);
+function signedIn(res: request.Response, email: string, cookieName: string): SignedIn {
   const lines = setCookieLines(res);
   const refreshSecret = cookieValue(lines, cookieName) ?? '';
   return {
@@ -76,4 +66,39 @@ export async function registerUser(
     refreshSecret,
     refreshCookie: `${cookieName}=${refreshSecret}`,
   };
+}
+
+/** Registers a new account through the API, which also signs it in. */
+export async function registerUser(
+  app: INestApplication,
+  options: { email?: string; password?: string; name?: string; cookieName?: string } = {},
+): Promise<SignedIn> {
+  const email = options.email ?? uniqueEmail();
+  const res = await request(app.getHttpServer())
+    .post('/api/v1/auth/register')
+    .send({
+      email,
+      password: options.password ?? TEST_PASSWORD,
+      name: options.name ?? 'Test User',
+    })
+    .expect(201);
+  return signedIn(res, email, options.cookieName ?? 'ff_refresh');
+}
+
+/** Signs in through POST /auth/login (another device of the same account). */
+export async function loginUser(
+  app: INestApplication,
+  email: string,
+  password = TEST_PASSWORD,
+): Promise<SignedIn> {
+  const res = await request(app.getHttpServer())
+    .post('/api/v1/auth/login')
+    .send({ email, password })
+    .expect(200);
+  return signedIn(res, email, 'ff_refresh');
+}
+
+/** `Authorization` header value for a signed-in test user. */
+export function bearer(user: SignedIn): string {
+  return `Bearer ${user.body.accessToken}`;
 }

@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   refreshTokens,
   type DatabaseHandle,
+  type DbExecutor,
   type RefreshToken,
   type RefreshTokenRevokeReason,
 } from '@forgeflow/database';
@@ -16,10 +17,10 @@ import type {
 } from '../../common/types/auth.types.js';
 import type { Clock } from '../../common/types/clock.types.js';
 import {
-  generateRefreshTokenSecret,
-  hashRefreshTokenSecret,
-  isRefreshTokenSecret,
-} from '../../common/utils/refresh-token-secret.util.js';
+  generateSecretToken,
+  hashSecretToken,
+  isSecretToken,
+} from '../../common/utils/secret-token.util.js';
 import { decideRotation, refreshTokenExpiry } from '../../common/utils/token-rotation.util.js';
 
 /**
@@ -91,12 +92,25 @@ export class RefreshTokenService {
       .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)));
   }
 
+  /** Ends every sign-in of `userId`. */
+  async revokeAllForUser(
+    userId: string,
+    reason: RefreshTokenRevokeReason,
+    options: { db?: DbExecutor } = {},
+  ): Promise<void> {
+    const db = options.db ?? this.database.db;
+    await db
+      .update(refreshTokens)
+      .set({ revokedAt: this.now(), revokedReason: reason })
+      .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+  }
+
   private async findBySecret(secret: string): Promise<RefreshToken | undefined> {
-    if (!isRefreshTokenSecret(secret)) return undefined;
+    if (!isSecretToken(secret)) return undefined;
     const [token] = await this.database.db
       .select()
       .from(refreshTokens)
-      .where(eq(refreshTokens.tokenHash, hashRefreshTokenSecret(secret)))
+      .where(eq(refreshTokens.tokenHash, hashSecretToken(secret)))
       .limit(1);
     return token;
   }
@@ -108,13 +122,13 @@ export class RefreshTokenService {
     now: Date,
     client: ClientInfo,
   ) {
-    const secret = generateRefreshTokenSecret();
+    const secret = generateSecretToken();
     return {
       secret,
       values: {
         userId,
         familyId,
-        tokenHash: hashRefreshTokenSecret(secret),
+        tokenHash: hashSecretToken(secret),
         userAgent: client.userAgent?.slice(0, MAX_USER_AGENT_LENGTH) ?? null,
         ipAddress: client.ipAddress ?? null,
         createdAt: now,

@@ -91,11 +91,14 @@ apps/api/src/
     guards/             JwtAuthGuard, OriginGuard (CSRF)
     interceptors/       EnvelopeInterceptor (bọc kết quả thành { data })
     pipes/              ZodValidationPipe
+    templates/          Template email (layout chung, xác minh, đặt lại / đã đổi mật khẩu)
     types/              Kiểu dữ liệu dùng chung (AuthContext, ClientInfo, kết quả xoay token…)
-    utils/              Hàm thuần: request id, clock, client info, băm / xoay refresh token
+    utils/              Hàm thuần: request id, clock, client info, secret token,
+                        xoay refresh token, escape HTML, link tới web app
   modules/
-    auth/               AuthController, AuthService, AccessTokenService,
-                        RefreshTokenService, RefreshCookieService
+    auth/               Controller: Auth, EmailVerification, Password
+                        Service: Auth, AccessToken, RefreshToken, Password, UserToken,
+                        EmailVerification, PasswordReset, AuthMail, RefreshCookie
     users/              UsersService
     mail/               MailService (gửi email qua SMTP)
     health/             HealthController (/health, /ready)
@@ -104,7 +107,7 @@ apps/api/src/
 - **Controller** nhận request, gọi service, trả kết quả (interceptor bọc thành `{ data }`).
 - **Service** chứa logic và truy vấn DB bằng Drizzle (`@forgeflow/database`).
 - **Module** khai báo controller / service và export những gì module khác cần.
-- Tên file theo hậu tố: `*.controller.ts`, `*.service.ts`, `*.module.ts`, `*.guard.ts`, `*.decorator.ts`, `*.filter.ts`, `*.interceptor.ts`, `*.pipe.ts`, `*.types.ts`, `*.constants.ts`, `*.util.ts`.
+- Tên file theo hậu tố: `*.controller.ts`, `*.service.ts`, `*.module.ts`, `*.guard.ts`, `*.decorator.ts`, `*.filter.ts`, `*.interceptor.ts`, `*.pipe.ts`, `*.template.ts`, `*.types.ts`, `*.constants.ts`, `*.util.ts`.
 - Schema DB nằm ở `packages/database`, DTO dùng chung với web ở `packages/contracts`.
 
 ## Test
@@ -121,22 +124,52 @@ Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules
 - Mỗi request có `X-Request-Id` (dùng lại giá trị client gửi nếu hợp lệ, nếu không thì tự sinh); id này có trong log và trong body lỗi.
 - Body / query được validate bằng `ZodValidationPipe` với schema từ `@forgeflow/contracts`.
 
-## Xác thực (JWT)
+## Xác thực
 
-- **Mặc định mọi route đều cần access token.** Route công khai phải gắn `@Public()` (ví dụ `/health`, `/ready`, `/auth/register`, `/auth/login`, `/auth/refresh`).
-- **Đăng ký**: `POST /api/v1/auth/register` với `{ email, password, name }` → `201`, trả access token và đặt refresh cookie (đăng nhập luôn). Email được trim và chuyển chữ thường; email đã có tài khoản (không phân biệt hoa thường) → `409 EMAIL_TAKEN`. Email mới đăng ký có `emailVerified: false`.
-- **Đăng nhập**: `POST /api/v1/auth/login` với `{ email, password }` → `200`, cùng dạng response. Sai mật khẩu, email không tồn tại hay tài khoản không có mật khẩu (chỉ OAuth) đều trả cùng một lỗi `401 INVALID_CREDENTIALS` với thời gian xử lý như nhau, nên không dò được email nào đã đăng ký.
-  - Mỗi lần đăng nhập là một family refresh token riêng (mỗi thiết bị một family). Nếu trình duyệt còn refresh cookie cũ, family đó bị thu hồi trước khi cấp cookie mới.
-- **Mật khẩu**: 8–128 ký tự, không bắt buộc kiểu ký tự. Băm bằng argon2id (`m=19456 KiB, t=2, p=1`, theo OWASP); DB chỉ lưu chuỗi PHC. Hash tạo bằng tham số cũ được băm lại khi người dùng đăng nhập thành công.
+**Mặc định mọi route đều cần access token.** Route công khai phải gắn `@Public()`.
+
+| Endpoint                                | Cần đăng nhập | Việc làm                                                                      |
+| --------------------------------------- | ------------- | ----------------------------------------------------------------------------- |
+| `POST /api/v1/auth/register`            | Không         | Tạo tài khoản email + mật khẩu, đăng nhập luôn (`201`), gửi email xác minh    |
+| `POST /api/v1/auth/login`               | Không         | Đăng nhập bằng email + mật khẩu                                               |
+| `POST /api/v1/auth/refresh`             | Cookie        | Đổi refresh cookie lấy access token mới (xoay vòng)                           |
+| `POST /api/v1/auth/logout`              | Cookie        | Thu hồi lần đăng nhập của trình duyệt này, xoá cookie                         |
+| `GET /api/v1/auth/me`                   | Có            | Người dùng của access token                                                   |
+| `POST /api/v1/auth/verify-email`        | Không         | Xác minh email bằng `{ token }` từ link trong email                           |
+| `POST /api/v1/auth/verify-email/resend` | Có            | Gửi lại link xác minh (link cũ hết hiệu lực)                                  |
+| `POST /api/v1/auth/password/forgot`     | Không         | Gửi link đặt lại mật khẩu nếu email có tài khoản; luôn `204`                  |
+| `POST /api/v1/auth/password/reset`      | Không         | Đặt mật khẩu mới bằng `{ token, password }`, đăng xuất mọi thiết bị           |
+| `POST /api/v1/auth/password/change`     | Có            | Đổi mật khẩu bằng `{ currentPassword, newPassword }`, đăng xuất thiết bị khác |
+
+### Token và cookie
+
 - **Access token**: JWT ký HS256 bằng `JWT_SECRET`, sống 15 phút, chỉ chứa user id (`sub`), `jti`, issuer `forgeflow`, audience `forgeflow-api`. Gửi qua header `Authorization: Bearer <token>`; server không tra DB khi kiểm tra. Hết hạn thì API trả `401` với mã `TOKEN_EXPIRED`.
 - **Refresh token**: chuỗi ngẫu nhiên 32 byte trong cookie `ff_refresh` (`HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`). Khi `COOKIE_SECURE` bật (mặc định ở production), cookie có thêm `Secure` và tên `__Secure-ff_refresh`. DB (bảng `refresh_tokens`) chỉ lưu hash SHA-256.
-- **Xoay vòng**: mỗi lần `POST /api/v1/auth/refresh`, refresh token cũ bị thay bằng token mới cùng "family".
-  - Token đã bị thay mà dùng lại sau 30 giây → coi như bị đánh cắp, cả family bị thu hồi, người dùng phải đăng nhập lại.
-  - Dùng lại trong vòng 30 giây (hai tab refresh cùng lúc) → `409 CONFLICT`, sign-in vẫn còn; client thử lại.
-- Refresh token hết hạn sau 7 ngày không dùng; một lần đăng nhập kéo dài tối đa 30 ngày.
-- `POST /api/v1/auth/logout` thu hồi cả family và xoá cookie. Access token đã phát vẫn dùng được tới khi hết hạn (tối đa 15 phút) — đó là đánh đổi của token không trạng thái.
-- `GET /api/v1/auth/me` trả về người dùng của access token.
-- **CSRF**: access token không nằm trong cookie nên request API thường không thể bị giả mạo. Thêm vào đó, mọi request `POST`/`PUT`/`PATCH`/`DELETE` bị từ chối (`403 ORIGIN_NOT_ALLOWED`) nếu trình duyệt đánh dấu `Sec-Fetch-Site: cross-site` hoặc `Origin` khác `APP_ORIGIN`.
+- **Xoay vòng**: mỗi lần refresh, token cũ bị thay bằng token mới cùng "family" (một family là một lần đăng nhập, tức một thiết bị).
+  - Token đã bị thay mà dùng lại sau 30 giây → coi như bị đánh cắp, cả family bị thu hồi.
+  - Dùng lại trong vòng 30 giây (hai tab refresh cùng lúc) → `409 CONFLICT`, lần đăng nhập vẫn còn; client thử lại.
+- Refresh token hết hạn sau 7 ngày không dùng; một lần đăng nhập kéo dài tối đa 30 ngày. Đăng nhập mới trên trình duyệt còn cookie cũ thì family cũ bị thu hồi.
+- Đăng xuất hay đổi / đặt lại mật khẩu chỉ chặn refresh token; access token đã phát vẫn dùng được tới khi hết hạn (tối đa 15 phút) — đánh đổi của token không trạng thái.
+
+### Đăng ký, đăng nhập, mật khẩu
+
+- Email được trim và chuyển chữ thường; email đã có tài khoản (không phân biệt hoa thường) → `409 EMAIL_TAKEN`.
+- Sai mật khẩu, email không tồn tại hay tài khoản chỉ có OAuth đều trả cùng lỗi `401 INVALID_CREDENTIALS`, thời gian xử lý như nhau.
+- Mật khẩu 8–128 ký tự, không bắt buộc kiểu ký tự; băm argon2id (`m=19456 KiB, t=2, p=1`), DB chỉ lưu chuỗi PHC. Hash tham số cũ được băm lại khi đăng nhập.
+- Đổi mật khẩu cần mật khẩu hiện tại (sai → `400 INVALID_PASSWORD`); tài khoản chưa có mật khẩu → `409 PASSWORD_NOT_SET`, dùng "quên mật khẩu" để đặt.
+- Mỗi lần đổi / đặt lại mật khẩu đều gửi email thông báo.
+
+### Email xác minh và đặt lại mật khẩu
+
+- Link trong email có dạng `<APP_ORIGIN>/verify-email#token=…` và `<APP_ORIGIN>/reset-password#token=…`. Token nằm sau `#` nên không bao giờ tới server của web hay header `Referer`; trang web đọc token rồi gọi API.
+- Token 32 byte ngẫu nhiên, DB (bảng `user_tokens`) chỉ lưu hash SHA-256. Mỗi token dùng một lần, chỉ còn hiệu lực khi email của tài khoản vẫn là địa chỉ đã nhận link, và chỉ link mới nhất của mỗi loại dùng được.
+- Link xác minh sống 24 giờ, link đặt lại mật khẩu 1 giờ. Link sai / hết hạn / đã dùng → `400 INVALID_TOKEN`.
+- Đặt lại mật khẩu cũng đánh dấu email đã xác minh (link chứng minh quyền với hộp thư).
+- "Quên mật khẩu" luôn trả `204` và tạo token + gửi email ở nền, nên cả nội dung lẫn thời gian phản hồi đều không tiết lộ email có tài khoản hay không.
+
+### CSRF và production
+
+- Access token không nằm trong cookie nên request API thường không thể bị giả mạo. Thêm vào đó, mọi request `POST`/`PUT`/`PATCH`/`DELETE` bị từ chối (`403 ORIGIN_NOT_ALLOWED`) nếu trình duyệt đánh dấu `Sec-Fetch-Site: cross-site` hoặc `Origin` khác `APP_ORIGIN`.
 - Ở production, api từ chối khởi động nếu `JWT_SECRET` ngắn hơn 32 ký tự hoặc là giá trị dev trong `.env.example`.
 
 ## Docker image

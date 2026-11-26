@@ -1,3 +1,4 @@
+import type { UserTokenPurpose } from '@forgeflow/database';
 import { API_PREFIX } from './http.constants.js';
 
 const MINUTE_MS = 60 * 1000;
@@ -32,8 +33,21 @@ export const PASSWORD_HASH_OPTIONS = {
   outputLen: 32,
 } as const;
 
-/** Random bytes in a refresh token secret (base64url: 43 characters). */
-export const REFRESH_TOKEN_BYTES = 32;
+/** How long an emailed link works. Reset links are short-lived: they grant the whole account. */
+export const USER_TOKEN_TTL_MS = {
+  verify_email: 24 * 60 * MINUTE_MS,
+  reset_password: 60 * MINUTE_MS,
+} as const satisfies Record<UserTokenPurpose, number>;
+
+/** Pages of the web app (relative to APP_ORIGIN) that emailed links open. */
+export const WEB_PATHS = {
+  verifyEmail: '/verify-email',
+  resetPassword: '/reset-password',
+  forgotPassword: '/forgot-password',
+} as const;
+
+/** Random bytes in a secret token (refresh, email verification, password reset): 43 base64url characters. */
+export const SECRET_TOKEN_BYTES = 32;
 
 /** Longest user agent kept on a refresh token. */
 export const MAX_USER_AGENT_LENGTH = 512;

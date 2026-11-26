@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { createApp } from '../../../src/app.factory.js';
 import { TOKEN_POLICY } from '../../../src/common/constants/auth.constants.js';
-import { hashRefreshTokenSecret } from '../../../src/common/utils/refresh-token-secret.util.js';
+import { hashSecretToken } from '../../../src/common/utils/secret-token.util.js';
 import { AccessTokenService } from '../../../src/modules/auth/access-token.service.js';
 import {
   APP_ORIGIN,
@@ -158,7 +158,7 @@ describe('JWT access tokens and refresh cookie', () => {
     await database.db
       .update(refreshTokens)
       .set({ revokedAt: new Date(Date.now() - TOKEN_POLICY.refreshReuseGraceMs - 60_000) })
-      .where(eq(refreshTokens.tokenHash, hashRefreshTokenSecret(refreshSecret)));
+      .where(eq(refreshTokens.tokenHash, hashSecretToken(refreshSecret)));
 
     const res = await http().post('/api/v1/auth/refresh').set('Cookie', refreshCookie).expect(401);
     expect(cookieLine(setCookieLines(res), 'ff_refresh')).toMatch(/Expires=Thu, 01 Jan 1970/);
@@ -194,7 +194,7 @@ describe('JWT access tokens and refresh cookie', () => {
     const [row] = await database.db
       .select()
       .from(refreshTokens)
-      .where(eq(refreshTokens.tokenHash, hashRefreshTokenSecret(refreshSecret)));
+      .where(eq(refreshTokens.tokenHash, hashSecretToken(refreshSecret)));
     expect(row?.revokedReason).toBe('logout');
     await http().post('/api/v1/auth/refresh').set('Cookie', refreshCookie).expect(401);
   });

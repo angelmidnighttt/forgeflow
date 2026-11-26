@@ -11,6 +11,13 @@ export const ErrorCode = {
   InvalidCredentials: 'INVALID_CREDENTIALS',
   /** Registration with an email that already has an account. */
   EmailTaken: 'EMAIL_TAKEN',
+  /** A verification or password reset link that is unknown, expired or already used. */
+  InvalidToken: 'INVALID_TOKEN',
+  /** The current password given to change the password is wrong. */
+  InvalidPassword: 'INVALID_PASSWORD',
+  /** The account has no password yet (it signs in through OAuth); use "forgot password" to set one. */
+  PasswordNotSet: 'PASSWORD_NOT_SET',
+  EmailAlreadyVerified: 'EMAIL_ALREADY_VERIFIED',
   Forbidden: 'FORBIDDEN',
   /** A state-changing request came from another site (CSRF protection). */
   OriginNotAllowed: 'ORIGIN_NOT_ALLOWED',

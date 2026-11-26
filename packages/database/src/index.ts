@@ -7,6 +7,10 @@ export { migrateDatabase, migrationsFolder } from './migrate.js';
 export * from './schema/index.js';
 
 export type Database = NodePgDatabase<typeof schema>;
+/** The `tx` handed to `db.transaction(async (tx) => …)`. */
+export type DatabaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+/** Either the pool-backed database or an open transaction: lets a query join the caller's transaction. */
+export type DbExecutor = Database | DatabaseTransaction;
 
 export interface DatabaseHandle {
   db: Database;

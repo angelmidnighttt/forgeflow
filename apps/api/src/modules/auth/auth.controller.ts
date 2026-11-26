@@ -25,17 +25,11 @@ import { CurrentAuth } from '../../common/decorators/current-auth.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import type { AuthContext, IssuedTokens } from '../../common/types/auth.types.js';
+import { signInRequired } from '../../common/utils/auth-errors.util.js';
 import { clientInfoFrom } from '../../common/utils/client-info.util.js';
 import { toAuthUser, UsersService } from '../users/users.service.js';
 import { AuthService, toTokenResponse } from './auth.service.js';
 import { RefreshCookieService } from './refresh-cookie.service.js';
-
-function signInRequired(): UnauthorizedException {
-  return new UnauthorizedException({
-    code: ErrorCode.Unauthorized,
-    message: 'Sign in to continue.',
-  });
-}
 
 @Controller('auth')
 export class AuthController {

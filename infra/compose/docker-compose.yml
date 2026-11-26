@@ -1,4 +1,5 @@
-# Local development services. Start with `npm run db:up`, stop with `npm run db:down`.
+# Local development services (PostgreSQL, Mailpit). Start with `npm run db:up`, stop with
+# `npm run db:down`.
 name: forgeflow
 
 services:
@@ -18,6 +19,14 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  # Catches every email the api sends; nothing leaves the machine. Inbox: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.34
+    ports:
+      - '${FORGEFLOW_SMTP_PORT:-1025}:1025'
+      - '${FORGEFLOW_MAILPIT_PORT:-8025}:8025'
+    # The image ships a healthcheck (`/mailpit readyz`), so `up --wait` waits for it.
 
 volumes:
   pgdata:

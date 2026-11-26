@@ -4,6 +4,9 @@ import { databaseEnvSchema } from '@forgeflow/database';
 /** Prefix of the development secret in .env.example; refused in production. */
 export const DEV_JWT_SECRET_PREFIX = 'dev-only-';
 
+/** `address@domain` or `Display Name <address@domain>`. */
+const MAILBOX_PATTERN = /^(?:[^<>@]*<[^<>@\s]+@[^<>@\s]+>|[^<>@\s]+@[^<>@\s]+)$/;
+
 export const apiEnvSchema = baseEnvSchema
   .extend({
     DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL,
@@ -14,6 +17,12 @@ export const apiEnvSchema = baseEnvSchema
     JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
     /** Refresh cookie gets the Secure flag and the __Secure- prefix. Defaults to true in production. */
     COOKIE_SECURE: z.stringbool().optional(),
+    /** SMTP server for outgoing email, e.g. smtp://localhost:1025 or smtps://user:pass@host:465. */
+    SMTP_URL: z.url({ protocol: /^smtps?$/, error: 'must be an smtp:// or smtps:// URL' }),
+    /** Sender of outgoing email: an address, optionally with a display name (`Name <address>`). */
+    MAIL_FROM: z
+      .string()
+      .regex(MAILBOX_PATTERN, 'must be an email address, optionally as "Name <address>"'),
   })
   .refine(
     (env) => env.NODE_ENV !== 'production' || !env.JWT_SECRET.startsWith(DEV_JWT_SECRET_PREFIX),

@@ -19,6 +19,9 @@ export function envFor(overrides: Partial<ApiEnv> = {}): ApiEnv {
     API_PORT: 0,
     APP_ORIGIN,
     JWT_SECRET,
+    // Nothing listens here: tests that send email pass the Mailpit URL instead.
+    SMTP_URL: 'smtp://127.0.0.1:1',
+    MAIL_FROM: 'ForgeFlow <no-reply@forgeflow.test>',
     ...overrides,
   };
 }

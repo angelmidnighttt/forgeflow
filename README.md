@@ -22,7 +22,7 @@ npm run dev
 `npm run dev` sẽ:
 
 1. Tạo `.env` từ `.env.example` nếu chưa có (và bổ sung các biến mới thêm vào `.env.example`).
-2. Bật PostgreSQL (pgvector) bằng Docker Compose và chờ healthy.
+2. Bật PostgreSQL (pgvector) và Mailpit bằng Docker Compose, chờ healthy.
 3. Build các package TypeScript, áp dụng migration.
 4. Chạy song song: TypeScript watch, api (tự restart khi code đổi), web.
 
@@ -31,8 +31,11 @@ npm run dev
 | http://localhost:3000               | Web dashboard (trang trạng thái hệ thống) |
 | http://localhost:4000/api/v1/health | Liveness của api                          |
 | http://localhost:4000/api/v1/ready  | Readiness (kiểm tra DB)                   |
+| http://localhost:8025               | Mailpit: hộp thư nhận mọi email api gửi   |
 
-Nếu cổng 5432 đã bị chiếm, đặt `FORGEFLOW_DB_PORT=5434` (hoặc cổng khác) trước khi chạy và sửa `DATABASE_URL` trong `.env` cho khớp.
+Email ở local không đi ra ngoài: api gửi qua SMTP tới Mailpit (`SMTP_URL=smtp://localhost:1025`), mở http://localhost:8025 để đọc.
+
+Nếu cổng đã bị chiếm, đặt cổng khác trước khi chạy và sửa `.env` cho khớp: `FORGEFLOW_DB_PORT` (mặc định 5432, sửa `DATABASE_URL`), `FORGEFLOW_SMTP_PORT` (1025, sửa `SMTP_URL`), `FORGEFLOW_MAILPIT_PORT` (8025, đặt `MAILPIT_URL` cho test).
 
 ## Script
 
@@ -43,9 +46,9 @@ Nếu cổng 5432 đã bị chiếm, đặt `FORGEFLOW_DB_PORT=5434` (hoặc c�
 | `npm run typecheck`               | Kiểm tra kiểu toàn repo, gồm cả code test                 |
 | `npm run lint`                    | ESLint                                                    |
 | `npm run format` / `format:check` | Prettier                                                  |
-| `npm test`                        | Build rồi chạy Jest (unit + integration, cần PostgreSQL)  |
-| `npm run test:unit`               | Chỉ chạy unit test, không cần PostgreSQL                  |
-| `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL local                                |
+| `npm test`                        | Build rồi chạy Jest (unit + integration, cần `db:up`)     |
+| `npm run test:unit`               | Chỉ chạy unit test, không cần dịch vụ ngoài               |
+| `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL và Mailpit local                     |
 | `npm run db:generate`             | Sinh migration từ schema Drizzle (`drizzle-kit generate`) |
 | `npm run db:migrate`              | Áp dụng migration (chạy lặp lại an toàn)                  |
 | `npm run db:reset`                | Xoá sạch và migrate lại — chỉ chạy được với DB localhost  |
@@ -94,6 +97,7 @@ apps/api/src/
     auth/               AuthController, AuthService, AccessTokenService,
                         RefreshTokenService, RefreshCookieService
     users/              UsersService
+    mail/               MailService (gửi email qua SMTP)
     health/             HealthController (/health, /ready)
 ```
 
@@ -108,7 +112,7 @@ apps/api/src/
 Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules/auth/…` ứng với `src/modules/auth/…`). Package dùng chung giữ test trong `packages/<tên>/test/`.
 
 - `*.test.ts`: unit test, không cần dịch vụ ngoài.
-- `*.int.test.ts`: integration test, chạy với PostgreSQL thật. Trước mỗi lần chạy, Jest tạo lại một database riêng tên `<tên DB>_test` (hoặc `TEST_DATABASE_URL`) và áp dụng migration; database dev không bị đụng tới.
+- `*.int.test.ts`: integration test, chạy với PostgreSQL và Mailpit thật (`npm run db:up`). Trước mỗi lần chạy, Jest tạo lại một database riêng tên `<tên DB>_test` (hoặc `TEST_DATABASE_URL`) và áp dụng migration; database dev không bị đụng tới. Test email gửi qua Mailpit rồi đọc lại bằng HTTP API của nó, mỗi test dùng một địa chỉ nhận riêng.
 
 ## Quy ước API
 

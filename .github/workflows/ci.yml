@@ -30,6 +30,13 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 30
+      # Integration tests send email through it and read it back over its HTTP API.
+      # The image has its own healthcheck, which the runner waits for.
+      mailpit:
+        image: axllent/mailpit:v1.34
+        ports:
+          - 1025:1025
+          - 8025:8025
     env:
       NODE_ENV: test
       DATABASE_URL: postgres://forgeflow:forgeflow@localhost:5432/forgeflow

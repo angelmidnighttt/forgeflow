@@ -96,7 +96,7 @@ apps/api/src/
     utils/              Hàm thuần: request id, clock, client info, secret token,
                         xoay refresh token, escape HTML, link tới web app
   modules/
-    auth/               Controller: Auth, EmailVerification, Password
+    auth/               Controller: Auth, EmailVerification, Password, Sessions
                         Service: Auth, AccessToken, RefreshToken, Password, UserToken,
                         EmailVerification, PasswordReset, AuthMail, RefreshCookie
     users/              UsersService
@@ -128,18 +128,21 @@ Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules
 
 **Mặc định mọi route đều cần access token.** Route công khai phải gắn `@Public()`.
 
-| Endpoint                                | Cần đăng nhập | Việc làm                                                                      |
-| --------------------------------------- | ------------- | ----------------------------------------------------------------------------- |
-| `POST /api/v1/auth/register`            | Không         | Tạo tài khoản email + mật khẩu, đăng nhập luôn (`201`), gửi email xác minh    |
-| `POST /api/v1/auth/login`               | Không         | Đăng nhập bằng email + mật khẩu                                               |
-| `POST /api/v1/auth/refresh`             | Cookie        | Đổi refresh cookie lấy access token mới (xoay vòng)                           |
-| `POST /api/v1/auth/logout`              | Cookie        | Thu hồi lần đăng nhập của trình duyệt này, xoá cookie                         |
-| `GET /api/v1/auth/me`                   | Có            | Người dùng của access token                                                   |
-| `POST /api/v1/auth/verify-email`        | Không         | Xác minh email bằng `{ token }` từ link trong email                           |
-| `POST /api/v1/auth/verify-email/resend` | Có            | Gửi lại link xác minh (link cũ hết hiệu lực)                                  |
-| `POST /api/v1/auth/password/forgot`     | Không         | Gửi link đặt lại mật khẩu nếu email có tài khoản; luôn `204`                  |
-| `POST /api/v1/auth/password/reset`      | Không         | Đặt mật khẩu mới bằng `{ token, password }`, đăng xuất mọi thiết bị           |
-| `POST /api/v1/auth/password/change`     | Có            | Đổi mật khẩu bằng `{ currentPassword, newPassword }`, đăng xuất thiết bị khác |
+| Endpoint                                   | Cần đăng nhập | Việc làm                                                                      |
+| ------------------------------------------ | ------------- | ----------------------------------------------------------------------------- |
+| `POST /api/v1/auth/register`               | Không         | Tạo tài khoản email + mật khẩu, đăng nhập luôn (`201`), gửi email xác minh    |
+| `POST /api/v1/auth/login`                  | Không         | Đăng nhập bằng email + mật khẩu                                               |
+| `POST /api/v1/auth/refresh`                | Cookie        | Đổi refresh cookie lấy access token mới (xoay vòng)                           |
+| `POST /api/v1/auth/logout`                 | Cookie        | Thu hồi lần đăng nhập của trình duyệt này, xoá cookie                         |
+| `GET /api/v1/auth/me`                      | Có            | Người dùng của access token                                                   |
+| `POST /api/v1/auth/verify-email`           | Không         | Xác minh email bằng `{ token }` từ link trong email                           |
+| `POST /api/v1/auth/verify-email/resend`    | Có            | Gửi lại link xác minh (link cũ hết hiệu lực)                                  |
+| `POST /api/v1/auth/password/forgot`        | Không         | Gửi link đặt lại mật khẩu nếu email có tài khoản; luôn `204`                  |
+| `POST /api/v1/auth/password/reset`         | Không         | Đặt mật khẩu mới bằng `{ token, password }`, đăng xuất mọi thiết bị           |
+| `POST /api/v1/auth/password/change`        | Có            | Đổi mật khẩu bằng `{ currentPassword, newPassword }`, đăng xuất thiết bị khác |
+| `GET /api/v1/auth/sessions`                | Có            | Các thiết bị đang đăng nhập; `current` là thiết bị gọi request                |
+| `DELETE /api/v1/auth/sessions/:id`         | Có            | Đăng xuất một thiết bị                                                        |
+| `POST /api/v1/auth/sessions/revoke-others` | Có            | Đăng xuất mọi thiết bị trừ thiết bị này                                       |
 
 ### Token và cookie
 
@@ -149,7 +152,7 @@ Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules
   - Token đã bị thay mà dùng lại sau 30 giây → coi như bị đánh cắp, cả family bị thu hồi.
   - Dùng lại trong vòng 30 giây (hai tab refresh cùng lúc) → `409 CONFLICT`, lần đăng nhập vẫn còn; client thử lại.
 - Refresh token hết hạn sau 7 ngày không dùng; một lần đăng nhập kéo dài tối đa 30 ngày. Đăng nhập mới trên trình duyệt còn cookie cũ thì family cũ bị thu hồi.
-- Đăng xuất hay đổi / đặt lại mật khẩu chỉ chặn refresh token; access token đã phát vẫn dùng được tới khi hết hạn (tối đa 15 phút) — đánh đổi của token không trạng thái.
+- Đăng xuất, đổi / đặt lại mật khẩu hay thu hồi thiết bị chỉ chặn refresh token; access token đã phát vẫn dùng được tới khi hết hạn (tối đa 15 phút) — đánh đổi của token không trạng thái.
 
 ### Đăng ký, đăng nhập, mật khẩu
 

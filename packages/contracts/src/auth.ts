@@ -88,3 +88,19 @@ export const tokenResponseSchema = z.object({
   user: authUserSchema,
 });
 export type TokenResponse = z.infer<typeof tokenResponseSchema>;
+
+/**
+ * One signed-in device (GET /api/v1/auth/sessions). A session starts at login and lasts while
+ * its refresh token keeps being refreshed; `userAgent` and `ipAddress` are from the last refresh.
+ */
+export const sessionSchema = z.object({
+  id: z.uuid(),
+  userAgent: z.string().nullable(),
+  ipAddress: z.string().nullable(),
+  signedInAt: z.iso.datetime(),
+  lastUsedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  /** The session of the browser that made this request. */
+  current: z.boolean(),
+});
+export type Session = z.infer<typeof sessionSchema>;

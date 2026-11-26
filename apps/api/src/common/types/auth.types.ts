@@ -50,6 +50,16 @@ export type RotationResult =
   /** A replaced token came back after the grace window: the whole sign-in is now revoked. */
   | { status: 'reuse_detected' };
 
+/** A live sign-in (refresh token family) as RefreshTokenService.listActiveSessions returns it. */
+export interface ActiveSession {
+  familyId: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  signedInAt: Date;
+  lastUsedAt: Date;
+  expiresAt: Date;
+}
+
 /** What signing in or refreshing hands back to the client. */
 export interface IssuedTokens {
   access: SignedAccessToken;

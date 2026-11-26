@@ -12,11 +12,17 @@ import { PasswordController } from './password.controller.js';
 import { PasswordService } from './password.service.js';
 import { RefreshCookieService } from './refresh-cookie.service.js';
 import { RefreshTokenService } from './refresh-token.service.js';
+import { SessionsController } from './sessions.controller.js';
 import { UserTokenService } from './user-token.service.js';
 
 @Module({
   imports: [UsersModule, MailModule],
-  controllers: [AuthController, EmailVerificationController, PasswordController],
+  controllers: [
+    AuthController,
+    EmailVerificationController,
+    PasswordController,
+    SessionsController,
+  ],
   providers: [
     AccessTokenService,
     RefreshTokenService,

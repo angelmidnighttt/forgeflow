@@ -7,10 +7,11 @@ import {
   type RefreshToken,
   type RefreshTokenRevokeReason,
 } from '@forgeflow/database';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import { MAX_USER_AGENT_LENGTH, TOKEN_POLICY } from '../../common/constants/auth.constants.js';
 import { CLOCK, DATABASE } from '../../common/constants/injection-tokens.js';
 import type {
+  ActiveSession,
   ClientInfo,
   IssuedRefreshToken,
   RotationResult,
@@ -92,17 +93,94 @@ export class RefreshTokenService {
       .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)));
   }
 
-  /** Ends every sign-in of `userId`. */
+  /**
+   * Ends one sign-in of `userId`. Returns false when the family has no live token or belongs to
+   * someone else, so a user can never end another user's sign-in by guessing an id.
+   */
+  async revokeUserFamily(
+    userId: string,
+    familyId: string,
+    reason: RefreshTokenRevokeReason,
+  ): Promise<boolean> {
+    const revoked = await this.database.db
+      .update(refreshTokens)
+      .set({ revokedAt: this.now(), revokedReason: reason })
+      .where(
+        and(
+          eq(refreshTokens.userId, userId),
+          eq(refreshTokens.familyId, familyId),
+          isNull(refreshTokens.revokedAt),
+        ),
+      )
+      .returning({ id: refreshTokens.id });
+    return revoked.length > 0;
+  }
+
+  /** Ends every sign-in of `userId`, except the family `keepFamilyId` when given. */
   async revokeAllForUser(
     userId: string,
     reason: RefreshTokenRevokeReason,
-    options: { db?: DbExecutor } = {},
+    options: { keepFamilyId?: string; db?: DbExecutor } = {},
   ): Promise<void> {
     const db = options.db ?? this.database.db;
     await db
       .update(refreshTokens)
       .set({ revokedAt: this.now(), revokedReason: reason })
-      .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+      .where(
+        and(
+          eq(refreshTokens.userId, userId),
+          isNull(refreshTokens.revokedAt),
+          options.keepFamilyId ? ne(refreshTokens.familyId, options.keepFamilyId) : undefined,
+        ),
+      );
+  }
+
+  /**
+   * The user's live sign-ins, newest activity first. A live family has exactly one unrevoked,
+   * unexpired token: the latest, so its user agent and IP are those of the last refresh.
+   */
+  async listActiveSessions(userId: string): Promise<ActiveSession[]> {
+    const now = this.now();
+    // When each family started: its first token. Limited to this user's tokens (indexed).
+    const starts = this.database.db
+      .select({
+        familyId: refreshTokens.familyId,
+        signedInAt: sql<Date>`min(${refreshTokens.createdAt})`
+          .mapWith(refreshTokens.createdAt)
+          .as('signed_in_at'),
+      })
+      .from(refreshTokens)
+      .where(eq(refreshTokens.userId, userId))
+      .groupBy(refreshTokens.familyId)
+      .as('starts');
+
+    return this.database.db
+      .select({
+        familyId: refreshTokens.familyId,
+        userAgent: refreshTokens.userAgent,
+        ipAddress: refreshTokens.ipAddress,
+        signedInAt: starts.signedInAt,
+        lastUsedAt: refreshTokens.createdAt,
+        expiresAt: refreshTokens.expiresAt,
+      })
+      .from(refreshTokens)
+      .innerJoin(starts, eq(starts.familyId, refreshTokens.familyId))
+      .where(
+        and(
+          eq(refreshTokens.userId, userId),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, now),
+          gt(refreshTokens.familyExpiresAt, now),
+        ),
+      )
+      .orderBy(desc(refreshTokens.createdAt));
+  }
+
+  /** The family of the token behind `secret`, if that token is still live. */
+  async liveFamilyOf(secret: string): Promise<string | undefined> {
+    const token = await this.findBySecret(secret);
+    if (!token || token.revokedAt) return undefined;
+    return token.familyId;
   }
 
   private async findBySecret(secret: string): Promise<RefreshToken | undefined> {

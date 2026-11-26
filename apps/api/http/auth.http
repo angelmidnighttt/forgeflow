@@ -1,0 +1,189 @@
+# Gọi thử các endpoint auth bằng extension REST Client (humao.rest-client).
+# Bấm "Send Request" phía trên mỗi request. Chạy theo thứ tự từ trên xuống cho lần đầu.
+#
+# Cần: `npm run dev` đang chạy (api ở :4000, Mailpit ở :8025).
+# REST Client tự nhớ cookie như trình duyệt: refresh cookie `ff_refresh` (Path=/api/v1/auth)
+# được gửi kèm mọi request /auth/* sau khi đăng ký / đăng nhập.
+#
+# Rate limit ở local: mọi request từ REST Client có cùng IP 127.0.0.1, nên đăng ký tối đa
+# 10 lần / giờ, đăng nhập 30 lần / 15 phút. Gặp 429 thì xem header Retry-After.
+
+@baseUrl = http://localhost:4000/api/v1
+@password = mat khau thu nghiem
+@newPassword = mat khau moi tinh
+
+# Lấy từ kết quả các request có tên (# @name) bên dưới.
+@email = {{register.request.body.$.email}}
+@accessToken = {{login.response.body.$.data.accessToken}}
+
+
+### ───────────────────────── Hệ thống ─────────────────────────
+
+### Liveness
+GET {{baseUrl}}/health
+
+### Readiness (kiểm tra DB)
+GET {{baseUrl}}/ready
+
+
+### ───────────────────────── Đăng ký / đăng nhập ─────────────────────────
+
+### 1. Đăng ký (mỗi lần gửi tạo một email mới) → 201, đặt refresh cookie, gửi email xác minh
+# @name register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "thu-{{$timestamp}}@example.test",
+  "password": "{{password}}",
+  "name": "Người Thử"
+}
+
+### 2. Đăng nhập bằng email vừa đăng ký → 200, access token dùng cho các request "Cần đăng nhập"
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Đăng nhập sai mật khẩu → 401 INVALID_CREDENTIALS (11 lần liên tiếp → 429, email bị khoá 15 phút)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "sai mat khau"
+}
+
+### Đăng ký lại cùng email → 409 EMAIL_TAKEN
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "name": "Trùng Email"
+}
+
+
+### ───────────────────────── Phiên đăng nhập ─────────────────────────
+
+### Người dùng hiện tại (Cần đăng nhập)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{accessToken}}
+
+### Refresh: đổi refresh cookie lấy access token mới (cookie cũng được thay)
+# @name refresh
+POST {{baseUrl}}/auth/refresh
+
+### Đăng xuất: thu hồi lần đăng nhập của cookie hiện tại, xoá cookie → 204
+POST {{baseUrl}}/auth/logout
+
+
+### ───────────────────────── Xác minh email ─────────────────────────
+# Mở http://localhost:8025, mở email "Verify your email for ForgeFlow",
+# copy phần sau `#token=` trong link rồi dán vào biến dưới.
+
+@verifyToken = DAN_TOKEN_XAC_MINH_VAO_DAY
+
+### Xác minh email → 204 (dùng lại token → 400 INVALID_TOKEN)
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "token": "{{verifyToken}}"
+}
+
+### Gửi lại email xác minh (Cần đăng nhập) → 204; link cũ hết hiệu lực. Đã xác minh → 409
+POST {{baseUrl}}/auth/verify-email/resend
+Authorization: Bearer {{accessToken}}
+
+
+### ───────────────────────── Mật khẩu ─────────────────────────
+
+### Quên mật khẩu → luôn 204, có tài khoản thì gửi email "Reset your ForgeFlow password"
+POST {{baseUrl}}/auth/password/forgot
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+# Copy phần sau `#token=` trong email đặt lại mật khẩu (http://localhost:8025) dán vào đây.
+@resetToken = DAN_TOKEN_DAT_LAI_MAT_KHAU_VAO_DAY
+
+### Đặt lại mật khẩu → 204, đăng xuất mọi thiết bị, gửi email "Your ForgeFlow password was changed"
+# Sau bước này mật khẩu là {{newPassword}}: đổi @password ở đầu file trước khi đăng nhập lại.
+POST {{baseUrl}}/auth/password/reset
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "password": "{{newPassword}}"
+}
+
+### Đổi mật khẩu (Cần đăng nhập) → 200 + access token mới, các thiết bị khác bị đăng xuất
+# Sai mật khẩu hiện tại → 400 INVALID_PASSWORD. Xong thì đổi @password thành {{newPassword}}.
+POST {{baseUrl}}/auth/password/change
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "{{newPassword}}"
+}
+
+
+### ───────────────────────── Thiết bị đăng nhập ─────────────────────────
+# Chạy "Đăng nhập" vài lần để có nhiều thiết bị. Mỗi lần đăng nhập là một thiết bị;
+# REST Client chỉ giữ cookie của lần cuối, nên lần đó là thiết bị "current".
+
+### Danh sách thiết bị (Cần đăng nhập); `current: true` là thiết bị của cookie đang gửi
+# @name sessions
+GET {{baseUrl}}/auth/sessions
+Authorization: Bearer {{accessToken}}
+
+# Thiết bị thứ hai trong danh sách; đổi chỉ số hoặc dán id muốn đăng xuất.
+@sessionId = {{sessions.response.body.$.data[1].id}}
+
+### Đăng xuất một thiết bị → 204 (id không tồn tại / của người khác → 404)
+DELETE {{baseUrl}}/auth/sessions/{{sessionId}}
+Authorization: Bearer {{accessToken}}
+
+### Đăng xuất mọi thiết bị khác, giữ thiết bị này → 204
+POST {{baseUrl}}/auth/sessions/revoke-others
+Authorization: Bearer {{accessToken}}
+
+
+### ───────────────────────── Các trường hợp lỗi ─────────────────────────
+
+### Thiếu access token → 401 UNAUTHORIZED, header WWW-Authenticate
+GET {{baseUrl}}/auth/me
+
+### Dữ liệu sai → 400 VALIDATION_FAILED, `details` liệt kê từng trường
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "khong-phai-email",
+  "password": "ngan"
+}
+
+### Request từ site khác (chống CSRF) → 403 ORIGIN_NOT_ALLOWED
+POST {{baseUrl}}/auth/refresh
+Origin: https://trang-la.example
+
+
+### ───────────────────────── Đăng nhập bằng GitHub ─────────────────────────
+# Luồng này chạy trong trình duyệt (chuyển hướng qua github.com), không gọi được bằng REST Client.
+# 1. Tạo OAuth app tại https://github.com/settings/developers,
+#    callback: http://localhost:3000/api/v1/auth/github/callback
+# 2. Đặt GITHUB_CLIENT_ID và GITHUB_CLIENT_SECRET trong .env (api tự khởi động lại).
+# 3. Mở http://localhost:3000/api/v1/auth/github trong trình duyệt.
+# Chưa cấu hình thì request dưới trả 404.
+
+### Kiểm tra GitHub đã bật chưa (đã bật → 302 sang github.com)
+GET {{baseUrl}}/auth/github

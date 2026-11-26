@@ -7,6 +7,10 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { EmailVerificationController } from './email-verification.controller.js';
 import { EmailVerificationService } from './email-verification.service.js';
+import { GithubAuthController } from './github-auth.controller.js';
+import { GithubOAuthService } from './github-oauth.service.js';
+import { GithubSignInService } from './github-sign-in.service.js';
+import { OAuthStateCookieService } from './oauth-state-cookie.service.js';
 import { PasswordResetService } from './password-reset.service.js';
 import { PasswordController } from './password.controller.js';
 import { PasswordService } from './password.service.js';
@@ -22,6 +26,7 @@ import { UserTokenService } from './user-token.service.js';
     EmailVerificationController,
     PasswordController,
     SessionsController,
+    GithubAuthController,
   ],
   providers: [
     AccessTokenService,
@@ -32,7 +37,10 @@ import { UserTokenService } from './user-token.service.js';
     EmailVerificationService,
     PasswordResetService,
     AuthService,
+    GithubOAuthService,
+    GithubSignInService,
     RefreshCookieService,
+    OAuthStateCookieService,
   ],
   exports: [AccessTokenService, AuthService, RefreshCookieService],
 })

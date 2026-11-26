@@ -40,12 +40,29 @@ export const apiEnvSchema = baseEnvSchema
     MAIL_FROM: z
       .string()
       .regex(MAILBOX_PATTERN, 'must be an email address, optionally as "Name <address>"'),
+
+    /**
+     * GitHub OAuth app for "Sign in with GitHub". Leave both unset to turn it off. The app's
+     * callback URL must be `<APP_ORIGIN>/api/v1/auth/github/callback`.
+     */
+    GITHUB_CLIENT_ID: z.string().trim().min(1).optional(),
+    GITHUB_CLIENT_SECRET: z.string().trim().min(1).optional(),
+    /** Where GitHub's OAuth pages and REST API are; change only for GitHub Enterprise Server. */
+    GITHUB_URL: z.url().default('https://github.com'),
+    GITHUB_API_URL: z.url().default('https://api.github.com'),
   })
   .refine(
     (env) => env.NODE_ENV !== 'production' || !env.JWT_SECRET.startsWith(DEV_JWT_SECRET_PREFIX),
     {
       path: ['JWT_SECRET'],
       message: 'the development secret from .env.example cannot be used in production',
+    },
+  )
+  .refine(
+    (env) => (env.GITHUB_CLIENT_ID === undefined) === (env.GITHUB_CLIENT_SECRET === undefined),
+    {
+      path: ['GITHUB_CLIENT_SECRET'],
+      message: 'set both GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET, or neither',
     },
   );
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

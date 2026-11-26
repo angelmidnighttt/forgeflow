@@ -19,6 +19,8 @@ const env: ApiEnv = {
   JWT_SECRET: 'test-only-jwt-secret-0123456789abcdef',
   SMTP_URL: 'smtp://127.0.0.1:1',
   MAIL_FROM: 'ForgeFlow <no-reply@forgeflow.test>',
+  GITHUB_URL: 'https://github.com',
+  GITHUB_API_URL: 'https://api.github.com',
 };
 
 const echoSchema = z.object({ name: z.string().min(1) });

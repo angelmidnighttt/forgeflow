@@ -94,13 +94,14 @@ apps/api/src/
     pipes/              ZodValidationPipe
     templates/          Template email (layout chung, xác minh, đặt lại / đã đổi mật khẩu)
     types/              Kiểu dữ liệu dùng chung (AuthContext, ClientInfo, kết quả xoay token…)
-    utils/              Hàm thuần: request id, clock, client info, secret token,
+    utils/              Hàm thuần: request id, clock, client info, secret token / PKCE,
                         xoay refresh token, escape HTML, link tới web app
   modules/
-    auth/               Controller: Auth, EmailVerification, Password, Sessions
+    auth/               Controller: Auth, EmailVerification, Password, Sessions, GithubAuth
                         Service: Auth, AccessToken, RefreshToken, Password, UserToken,
-                        EmailVerification, PasswordReset, AuthMail, RefreshCookie
-    users/              UsersService
+                        EmailVerification, PasswordReset, AuthMail, GithubOAuth,
+                        GithubSignIn, RefreshCookie, OAuthStateCookie
+    users/              UsersService (users, tài khoản OAuth liên kết)
     mail/               MailService (gửi email qua SMTP)
     rate-limit/         RateLimitService (bộ đếm cửa sổ cố định trong PostgreSQL)
     health/             HealthController (/health, /ready)
@@ -145,6 +146,8 @@ Test nằm trong `apps/api/test/`, cùng cấu trúc với `src/` (`test/modules
 | `GET /api/v1/auth/sessions`                | Có            | Các thiết bị đang đăng nhập; `current` là thiết bị gọi request                |
 | `DELETE /api/v1/auth/sessions/:id`         | Có            | Đăng xuất một thiết bị                                                        |
 | `POST /api/v1/auth/sessions/revoke-others` | Có            | Đăng xuất mọi thiết bị trừ thiết bị này                                       |
+| `GET /api/v1/auth/github`                  | Không         | Bắt đầu đăng nhập bằng GitHub (chuyển hướng sang GitHub)                      |
+| `GET /api/v1/auth/github/callback`         | Không         | GitHub chuyển về đây; đăng nhập rồi chuyển về web app                         |
 
 ### Token và cookie
 
@@ -186,13 +189,26 @@ Vượt giới hạn → `429 RATE_LIMITED` kèm header `Retry-After` (giây). B
 | Dùng link email theo IP             | 30 lần / 15 phút                              |
 | Gửi lại email xác minh theo user    | 3 lần / giờ                                   |
 | Đổi mật khẩu theo user              | 5 lần / 15 phút                               |
+| GitHub OAuth theo IP                | 30 lần / 15 phút                              |
 
 - **Khoá tạm**: đếm số lần thử của một email kể từ lần đăng nhập thành công gần nhất; quá giới hạn thì email bị khoá tới hết cửa sổ, kể cả khi nhập đúng mật khẩu. Áp dụng cả với email không có tài khoản nên không dò được. Đặt lại mật khẩu mở khoá.
 - **Sau reverse proxy phải đặt `TRUST_PROXY`** (số hop, ví dụ `1`, hoặc địa chỉ proxy). Không đặt thì `X-Forwarded-For` bị bỏ qua — an toàn, nhưng sau proxy mọi người dùng sẽ chung IP của proxy và chung bộ đếm. Ở local, `.env.example` đặt `loopback` vì web dev server proxy `/api`.
 
+### Đăng nhập bằng GitHub
+
+1. Tạo OAuth app tại https://github.com/settings/developers với callback `<APP_ORIGIN>/api/v1/auth/github/callback` (local: `http://localhost:3000/api/v1/auth/github/callback`), rồi đặt `GITHUB_CLIENT_ID` và `GITHUB_CLIENT_SECRET` (đặt cả hai hoặc không đặt; không đặt thì hai route trả `404`).
+2. Web app mở `/api/v1/auth/github`. API lưu `state` + PKCE verifier trong cookie `ff_oauth` (`HttpOnly`, `SameSite=Lax`, 10 phút) và chuyển sang GitHub (scope `read:user user:email`).
+3. GitHub chuyển về callback. API kiểm tra `state`, đổi code lấy profile, chọn email chính đã được GitHub xác minh, rồi:
+   - tài khoản GitHub đã liên kết → đăng nhập user đó;
+   - có user cùng email → liên kết. Nếu email của user đó **chưa xác minh**, mật khẩu, mọi lần đăng nhập và link đang chờ của nó bị xoá trước (chống chiếm trước tài khoản — ai đó đăng ký bằng email của người khác);
+   - chưa có → tạo user mới, email đã xác minh, không có mật khẩu.
+4. Thành công: đặt refresh cookie, chuyển về `<APP_ORIGIN>/` (web gọi `/auth/refresh` để lấy access token). Thất bại: chuyển về `<APP_ORIGIN>/login?error=<mã>` với mã trong `OAuthError` của `@forgeflow/contracts` (`oauth_denied`, `oauth_state`, `github_email_unverified`, `github_account_conflict`, `oauth_failed`).
+
+Access token của GitHub chỉ dùng để đọc profile rồi bỏ, không lưu.
+
 ### CSRF và production
 
-- Access token không nằm trong cookie nên request API thường không thể bị giả mạo. Thêm vào đó, mọi request `POST`/`PUT`/`PATCH`/`DELETE` bị từ chối (`403 ORIGIN_NOT_ALLOWED`) nếu trình duyệt đánh dấu `Sec-Fetch-Site: cross-site` hoặc `Origin` khác `APP_ORIGIN`.
+- Access token không nằm trong cookie nên request API thường không thể bị giả mạo. Thêm vào đó, mọi request `POST`/`PUT`/`PATCH`/`DELETE` bị từ chối (`403 ORIGIN_NOT_ALLOWED`) nếu trình duyệt đánh dấu `Sec-Fetch-Site: cross-site` hoặc `Origin` khác `APP_ORIGIN`. Callback GitHub được bảo vệ bằng `state`.
 - Ở production, api từ chối khởi động nếu `JWT_SECRET` ngắn hơn 32 ký tự hoặc là giá trị dev trong `.env.example`.
 
 ## Docker image

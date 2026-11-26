@@ -104,3 +104,21 @@ export const sessionSchema = z.object({
   current: z.boolean(),
 });
 export type Session = z.infer<typeof sessionSchema>;
+
+/**
+ * Why "Sign in with GitHub" failed. The api redirects the browser to `/login?error=<code>` on
+ * the web app, which shows a message for it.
+ */
+export const OAuthError = {
+  /** The user cancelled on GitHub's consent page. */
+  Denied: 'oauth_denied',
+  /** The callback did not come from a sign-in this browser started (or it took too long). */
+  StateMismatch: 'oauth_state',
+  /** The GitHub account has no verified primary email, which ForgeFlow needs for an account. */
+  EmailUnverified: 'github_email_unverified',
+  /** The ForgeFlow account for this email is already linked to a different GitHub account. */
+  AccountConflict: 'github_account_conflict',
+  /** GitHub did not answer as expected; trying again usually works. */
+  Failed: 'oauth_failed',
+} as const;
+export type OAuthError = (typeof OAuthError)[keyof typeof OAuthError];

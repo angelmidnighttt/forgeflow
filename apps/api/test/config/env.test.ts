@@ -48,6 +48,12 @@ describe('apiEnvSchema', () => {
     expect(parse('10.0.0.0/8, 172.16.0.1')).toBe('10.0.0.0/8, 172.16.0.1');
   });
 
+  it('takes GitHub sign-in settings as a pair', () => {
+    expect(issuesFor({ GITHUB_CLIENT_ID: 'id', GITHUB_CLIENT_SECRET: 'secret' })).toEqual([]);
+    expect(issuesFor({ GITHUB_CLIENT_ID: 'id' })).toEqual(['GITHUB_CLIENT_SECRET']);
+    expect(issuesFor({ GITHUB_CLIENT_SECRET: 'secret' })).toEqual(['GITHUB_CLIENT_SECRET']);
+  });
+
   it('rejects a MAIL_FROM that is not an address', () => {
     for (const from of [undefined, '', 'ForgeFlow', 'ForgeFlow <no-reply>', 'a@b, c@d']) {
       expect(issuesFor({ MAIL_FROM: from })).toEqual(['MAIL_FROM']);

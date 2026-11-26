@@ -24,6 +24,9 @@ export function envFor(overrides: Partial<ApiEnv> = {}): ApiEnv {
     MAIL_FROM: 'ForgeFlow <no-reply@forgeflow.test>',
     // Trust X-Forwarded-For from supertest, so client() can give each request its own address.
     TRUST_PROXY: 'loopback',
+    // GitHub sign-in stays off unless a test sets the client id and secret (and a fake GitHub).
+    GITHUB_URL: 'https://github.com',
+    GITHUB_API_URL: 'https://api.github.com',
     ...overrides,
   };
 }

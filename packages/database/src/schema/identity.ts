@@ -120,7 +120,40 @@ export const userTokens = pgTable(
   ],
 );
 
+export const OAUTH_PROVIDERS = ['github'] as const;
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+
+/**
+ * Sign-in identities at OAuth providers, linked to a user. The provider's stable account id
+ * (not the email or username, which can change) identifies the account. A user has at most one
+ * account per provider. Provider access tokens are not stored: sign-in only needs the profile.
+ */
+export const oauthAccounts = pgTable(
+  'oauth_accounts',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: uuid()
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text().$type<OAuthProvider>().notNull(),
+    providerAccountId: text().notNull(),
+    /** The username at the provider when last seen, for display only. */
+    providerLogin: text(),
+    createdAt: timestamptz().notNull().defaultNow(),
+    updatedAt: timestamptz()
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex('oauth_accounts_provider_account_key').on(t.provider, t.providerAccountId),
+    uniqueIndex('oauth_accounts_user_provider_key').on(t.userId, t.provider),
+    check('oauth_accounts_provider_check', sql`${t.provider} IN (${sqlList(OAUTH_PROVIDERS)})`),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type RefreshToken = typeof refreshTokens.$inferSelect;
 export type UserToken = typeof userTokens.$inferSelect;
+export type OAuthAccount = typeof oauthAccounts.$inferSelect;

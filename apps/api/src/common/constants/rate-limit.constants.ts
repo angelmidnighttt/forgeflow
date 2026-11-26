@@ -34,4 +34,5 @@ export const RATE_LIMITS = {
     windowMs: 15 * MINUTE_MS,
     by: 'user',
   },
+  oauthPerIp: { name: 'oauth-ip', limit: 30, windowMs: 15 * MINUTE_MS, by: 'ip' },
 } as const satisfies Record<string, RateLimitRule>;

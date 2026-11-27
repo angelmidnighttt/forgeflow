@@ -13,6 +13,8 @@ coverage/
 
 # Internal planning and design docs stay local
 docs/
+# READMEs stay local too until the MVP, which gets one written for the public repository
+README.md
 
 # Environment — never commit real secrets
 .env

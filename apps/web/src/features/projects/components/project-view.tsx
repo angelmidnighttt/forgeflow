@@ -1,7 +1,7 @@
 'use client';
 
 import { can, ErrorCode, updateProjectRequestSchema, type Project } from '@forgeflow/contracts';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Rocket } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
@@ -20,6 +20,7 @@ import { useOrganization } from '@/features/organizations/components/organizatio
 import { ApiError } from '@/lib/api-client';
 import { formErrorsFrom, PROJECT_NAME_TAKEN } from '../form-errors';
 import { projectsApi } from '../projects-api';
+import { ApiTokensCard } from './api-tokens-card';
 import { EnvironmentsCard } from './environments-card';
 
 type ProjectState =
@@ -79,13 +80,24 @@ export function ProjectView() {
       ) : null}
       {state.status === 'ready' ? (
         <>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{state.project.name}</h1>
-            <p className="text-sm text-muted-foreground">
-              Tạo lúc {formatDateTime(state.project.createdAt)}.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">{state.project.name}</h1>
+              <p className="text-sm text-muted-foreground">
+                Tạo lúc {formatDateTime(state.project.createdAt)}.
+              </p>
+            </div>
+            <Button variant="outline" asChild>
+              <Link href={`/orgs/${organization.id}/projects/${state.project.id}/deployments`}>
+                <Rocket />
+                Deployment
+              </Link>
+            </Button>
           </div>
           <EnvironmentsCard project={state.project} onChange={setProject} />
+          {can(organization.role, 'api_tokens.manage') ? (
+            <ApiTokensCard project={state.project} />
+          ) : null}
           {can(organization.role, 'projects.manage') ? (
             <RenameProjectCard project={state.project} onRenamed={setProject} />
           ) : null}

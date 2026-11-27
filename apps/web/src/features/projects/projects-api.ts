@@ -1,11 +1,15 @@
 import {
+  apiTokenSchema,
+  createdApiTokenSchema,
+  deploymentPageSchema,
   environmentSchema,
   projectSchema,
+  type CreateApiTokenRequest,
   type CreateEnvironmentRequest,
   type UpdateEnvironmentRequest,
 } from '@forgeflow/contracts';
 import { z } from 'zod';
-import { apiData } from '@/lib/api-client';
+import { apiData, apiRequest } from '@/lib/api-client';
 
 const projectsPath = (orgId: string) =>
   `/api/v1/organizations/${encodeURIComponent(orgId)}/projects`;
@@ -60,4 +64,46 @@ export const projectsApi = {
       environmentSchema,
       { method: 'PATCH', body, accessToken: token },
     ),
+};
+
+const deploymentsPath = (orgId: string, projectId: string) =>
+  `${projectPath(orgId, projectId)}/deployments`;
+const tokensPath = (orgId: string, projectId: string) =>
+  `${projectPath(orgId, projectId)}/api-tokens`;
+
+/** A project's deployments and API tokens. */
+export const deploymentsApi = {
+  list: (
+    token: string,
+    orgId: string,
+    projectId: string,
+    query: { environmentId?: string; status?: string; kind?: string; cursor?: string },
+  ) => {
+    const params = new URLSearchParams(
+      Object.entries(query).filter((entry): entry is [string, string] => Boolean(entry[1])),
+    );
+    const search = params.toString();
+    return apiData(
+      `${deploymentsPath(orgId, projectId)}${search ? `?${search}` : ''}`,
+      deploymentPageSchema,
+      { accessToken: token },
+    );
+  },
+
+  tokens: (token: string, orgId: string, projectId: string) =>
+    apiData(tokensPath(orgId, projectId), z.array(apiTokenSchema), { accessToken: token }),
+
+  /** The token's secret is in this answer only. */
+  createToken: (token: string, orgId: string, projectId: string, body: CreateApiTokenRequest) =>
+    apiData(tokensPath(orgId, projectId), createdApiTokenSchema, {
+      method: 'POST',
+      body,
+      accessToken: token,
+    }),
+
+  revokeToken: (token: string, orgId: string, projectId: string, tokenId: string) =>
+    apiRequest(`${tokensPath(orgId, projectId)}/${encodeURIComponent(tokenId)}`, {
+      method: 'DELETE',
+      accessToken: token,
+    }),
 };

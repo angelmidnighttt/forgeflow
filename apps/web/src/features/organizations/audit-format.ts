@@ -67,6 +67,22 @@ const DESCRIBE: Record<string, (m: Metadata) => string> = {
     `Đổi secret ${quoted(m, 'secret')} của integration ${quoted(m, 'integration')} (phiên bản ${version(m)})`,
   'integration.secret_revoked': (m) =>
     `Thu hồi secret ${quoted(m, 'secret')} của integration ${quoted(m, 'integration')}`,
+  'outbox_event.retried': (m) => `Chạy lại sự kiện nền bị lỗi (${text(m, 'topic')})`,
+  'integration.enabled': (m) => `Bật lại integration ${quoted(m, 'integration')}`,
+  'integration.disabled': (m) =>
+    `Tắt integration ${quoted(m, 'integration')}` +
+    (m.reason === 'uninstalled'
+      ? ' (GitHub App đã bị gỡ)'
+      : m.reason === 'suspended'
+        ? ' (GitHub App bị tạm ngưng)'
+        : ''),
+  'repository.mapped': (m) =>
+    typeof m.project === 'string'
+      ? `Gắn repository ${quoted(m, 'repository')} vào project ${quoted(m, 'project')}`
+      : `Bỏ gắn repository ${quoted(m, 'repository')} khỏi project`,
+  'api_token.created': (m) =>
+    `Tạo API token ${quoted(m, 'name')} (${text(m, 'prefix')}…) cho project ${quoted(m, 'project')}`,
+  'api_token.revoked': (m) => `Thu hồi API token ${quoted(m, 'name')} (${text(m, 'prefix')}…)`,
   'environment.unprotected': (m) =>
     `Tắt bảo vệ cho environment ${quoted(m, 'name')} (project ${quoted(m, 'project')})`,
 };

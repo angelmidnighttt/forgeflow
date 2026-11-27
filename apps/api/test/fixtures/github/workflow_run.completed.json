@@ -1,0 +1,47 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 3002,
+    "name": "CI",
+    "node_id": "WFR_kwLOAAAbWc8AAAAAAAAAC7o",
+    "head_branch": "main",
+    "head_sha": "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b",
+    "path": ".github/workflows/ci.yml",
+    "display_title": "Add the report API",
+    "run_number": 128,
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow_id": 61001,
+    "check_suite_id": 71001,
+    "url": "https://api.github.com/repos/acme/checkout/actions/runs/3002",
+    "html_url": "https://github.com/acme/checkout/actions/runs/3002",
+    "created_at": "2026-11-20T09:00:00Z",
+    "updated_at": "2026-11-20T09:06:15Z",
+    "run_attempt": 1,
+    "run_started_at": "2026-11-20T09:00:05Z",
+    "actor": { "login": "octo-dev", "id": 502, "type": "User" },
+    "triggering_actor": { "login": "octo-dev", "id": 502, "type": "User" },
+    "repository": { "id": 7001, "name": "checkout", "full_name": "acme/checkout" },
+    "head_repository": { "id": 7001, "name": "checkout", "full_name": "acme/checkout" }
+  },
+  "workflow": {
+    "id": 61001,
+    "name": "CI",
+    "path": ".github/workflows/ci.yml",
+    "state": "active"
+  },
+  "repository": {
+    "id": 7001,
+    "node_id": "R_kgDOAAAbWQ",
+    "name": "checkout",
+    "full_name": "acme/checkout",
+    "private": true,
+    "owner": { "login": "acme", "id": 401, "type": "Organization" },
+    "html_url": "https://github.com/acme/checkout",
+    "default_branch": "main"
+  },
+  "organization": { "login": "acme", "id": 401 },
+  "sender": { "login": "octo-dev", "id": 502, "type": "User" },
+  "installation": { "id": 88001, "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uODgwMDE=" }
+}

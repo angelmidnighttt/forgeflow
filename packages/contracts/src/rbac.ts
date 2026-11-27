@@ -40,6 +40,8 @@ export const PERMISSIONS = {
   'integrations.read': ALL_ROLES,
   /** Rotate and revoke integration secrets (later: connect and disconnect integrations). */
   'integrations.manage': MANAGERS,
+  /** Create and revoke a project's API tokens (they report deployments). */
+  'api_tokens.manage': MANAGERS,
 } as const satisfies Record<string, readonly OrganizationRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

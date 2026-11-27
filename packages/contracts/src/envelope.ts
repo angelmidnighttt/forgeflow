@@ -28,6 +28,10 @@ export const ErrorCode = {
   AlreadyMember: 'ALREADY_MEMBER',
   /** The invitation was sent to another email than the signed-in user's. */
   InvitationEmailMismatch: 'INVITATION_EMAIL_MISMATCH',
+  /** A webhook whose signature (X-Hub-Signature-256) does not match its body. */
+  InvalidSignature: 'INVALID_SIGNATURE',
+  /** An Idempotency-Key already used for a different request. */
+  IdempotencyKeyReused: 'IDEMPOTENCY_KEY_REUSED',
   /**
    * Another project of the organization, or another environment of the project, already has
    * this name (ignoring case). `details.field` is "name".

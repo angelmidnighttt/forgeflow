@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   foreignKey,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -108,3 +110,47 @@ export const integrationSecrets = pgTable(
 
 export type IntegrationRow = typeof integrations.$inferSelect;
 export type IntegrationSecretRow = typeof integrationSecrets.$inferSelect;
+
+/**
+ * The repositories a GitHub integration (App installation) can see, kept in step with GitHub,
+ * each mapped to at most one project of the organization: deployments of a mapped repository
+ * land in its project.
+ */
+export const repositories = pgTable(
+  'repositories',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid().notNull(),
+    integrationId: uuid().notNull(),
+    projectId: uuid(),
+    /** GitHub's repository id (it survives renames). */
+    externalId: text().notNull(),
+    /** owner/name. */
+    fullName: text().notNull(),
+    htmlUrl: text().notNull(),
+    defaultBranch: text(),
+    private: boolean().notNull().default(false),
+    createdAt: timestamptz().notNull().defaultNow(),
+    updatedAt: timestamptz()
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    foreignKey({
+      name: 'repositories_integration_fkey',
+      columns: [t.organizationId, t.integrationId],
+      foreignColumns: [integrations.organizationId, integrations.id],
+    }).onDelete('cascade'),
+    // Unmap a project's repositories before the project can go (projects cannot be deleted yet).
+    foreignKey({
+      name: 'repositories_project_fkey',
+      columns: [t.organizationId, t.projectId],
+      foreignColumns: [projects.organizationId, projects.id],
+    }),
+    uniqueIndex('repositories_integration_external_key').on(t.integrationId, t.externalId),
+    index('repositories_organization_project_idx').on(t.organizationId, t.projectId),
+  ],
+);
+
+export type RepositoryRow = typeof repositories.$inferSelect;

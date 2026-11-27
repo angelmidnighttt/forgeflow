@@ -1,0 +1,32 @@
+{
+  "action": "added",
+  "installation": {
+    "id": 88001,
+    "account": { "login": "acme", "id": 401, "type": "Organization" },
+    "repository_selection": "selected",
+    "html_url": "https://github.com/organizations/acme/settings/installations/88001",
+    "app_id": 424242,
+    "app_slug": "forgeflow-test"
+  },
+  "repository_selection": "selected",
+  "repositories_added": [
+    {
+      "id": 7003,
+      "node_id": "R_kgDOAAAbWw",
+      "name": "billing",
+      "full_name": "acme/billing",
+      "private": false
+    }
+  ],
+  "repositories_removed": [
+    {
+      "id": 7002,
+      "node_id": "R_kgDOAAAbWg",
+      "name": "legacy",
+      "full_name": "acme/legacy",
+      "private": true
+    }
+  ],
+  "requester": null,
+  "sender": { "login": "acme-admin", "id": 503, "type": "User" }
+}

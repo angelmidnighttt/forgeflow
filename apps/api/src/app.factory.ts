@@ -18,10 +18,13 @@ export async function createApp(
   env: ApiEnv,
   options: CreateAppOptions = {},
 ): Promise<INestApplication> {
+  // rawBody: webhook signatures are checked against the exact bytes received.
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule.forRoot(env, options.imports),
-    { bufferLogs: true },
+    { bufferLogs: true, rawBody: true },
   );
+  // GitHub webhook payloads go beyond the default 100 kB.
+  app.useBodyParser('json', { limit: '2mb' });
   app.useLogger(app.get(Logger));
   // Without it, X-Forwarded-For is ignored and req.ip is the address of the TCP peer.
   if (env.TRUST_PROXY !== undefined) app.set('trust proxy', env.TRUST_PROXY);

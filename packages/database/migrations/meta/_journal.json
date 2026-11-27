@@ -106,6 +106,55 @@
       "when": 1795760422306,
       "tag": "0014_integrations_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1795762142474,
+      "tag": "0015_outbox_and_webhooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795762144414,
+      "tag": "0016_outbox_and_webhooks_system_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795762695761,
+      "tag": "0017_repositories",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795762697738,
+      "tag": "0018_repositories_row_level_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795762900425,
+      "tag": "0019_deployments_and_api_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795762902162,
+      "tag": "0020_deployments_system_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795764585146,
+      "tag": "0021_outbox_lease_renewal",
+      "breakpoints": true
     }
   ]
 }

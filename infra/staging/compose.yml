@@ -6,6 +6,27 @@ name: forgeflow
 
 x-api-image: &api-image ${FORGEFLOW_IMAGES:?set FORGEFLOW_IMAGES in .env}-api:${FORGEFLOW_VERSION:?}
 
+# Settings the api and the worker share (same image, same code).
+x-app-environment: &app-environment
+  NODE_ENV: production
+  APP_VERSION: ${FORGEFLOW_VERSION:?}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  # forgeflow_app: row-level security applies; the api refuses to start as the owner.
+  DATABASE_URL: postgres://forgeflow_app:${APP_DB_PASSWORD:?}@postgres:5432/forgeflow
+  APP_ORIGIN: https://${SITE_HOST:?set SITE_HOST in .env}
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+  SECRET_ENCRYPTION_KEYS: ${SECRET_ENCRYPTION_KEYS:?set SECRET_ENCRYPTION_KEYS in .env}
+  SMTP_URL: ${SMTP_URL:?set SMTP_URL in .env}
+  MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+  GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+  GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+  GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
+  GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
+  GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
+
 services:
   postgres:
     image: pgvector/pgvector:pg17
@@ -73,24 +94,34 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      NODE_ENV: production
-      APP_VERSION: ${FORGEFLOW_VERSION:?}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      <<: *app-environment
       API_PORT: '4000'
-      # forgeflow_app: row-level security applies; the api refuses to start as the owner.
-      DATABASE_URL: postgres://forgeflow_app:${APP_DB_PASSWORD:?}@postgres:5432/forgeflow
-      APP_ORIGIN: https://${SITE_HOST:?set SITE_HOST in .env}
       # Caddy is the one proxy in front: X-Forwarded-For's last hop is the client.
       TRUST_PROXY: '1'
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
-      SECRET_ENCRYPTION_KEYS: ${SECRET_ENCRYPTION_KEYS:?set SECRET_ENCRYPTION_KEYS in .env}
-      SMTP_URL: ${SMTP_URL:?set SMTP_URL in .env}
-      MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:4000/api/v1/ready']
       interval: 10s
+      timeout: 3s
+      start_period: 30s
+      start_interval: 2s
+      retries: 3
+
+  # The outbox worker (webhooks, the GitHub catch-up job): the api's image, another command.
+  worker:
+    image: *api-image
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *app-environment
+    command: ['node', '--enable-source-maps', 'apps/api/dist/worker.js']
+    # It finishes the event in hand on SIGTERM.
+    stop_grace_period: 30s
+    healthcheck:
+      # The worker touches this file on every loop (at least every 5 seconds).
+      test: ['CMD-SHELL', 'test -n "$(find /tmp/forgeflow-worker.alive -mmin -1)"']
+      interval: 15s
       timeout: 3s
       start_period: 30s
       start_interval: 2s

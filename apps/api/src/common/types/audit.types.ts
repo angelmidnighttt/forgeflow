@@ -9,7 +9,16 @@ export interface AuditActor {
 }
 
 export type AuditTargetType =
-  'organization' | 'user' | 'invitation' | 'project' | 'environment' | 'integration';
+  | 'organization'
+  | 'user'
+  | 'invitation'
+  | 'project'
+  | 'environment'
+  | 'integration'
+  | 'outbox_event'
+  | 'repository'
+  | 'api_token'
+  | 'deployment';
 
 /** One entry to add to an organization's audit trail. */
 export interface AuditEntry {

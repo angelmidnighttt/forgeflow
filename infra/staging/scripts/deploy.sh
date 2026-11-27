@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deploys one version of ForgeFlow on this server: pulls its images, lets the api's database role
-# log in, applies migrations, then replaces the running api, web and Caddy containers. It stops at
-# the first failure, so a failed migration leaves the previous version serving.
+# log in, applies migrations, then replaces the running containers (every service of compose.yml
+# outside the "jobs" profile: api, worker, web, Caddy…). It stops at the first failure, so a
+# failed migration leaves the previous version serving.
 #
 # Usage: deploy.sh <commit-sha>
 # CI runs it through forgeflow-deploy.sh, which checks the repository out at that commit first.
@@ -31,7 +32,7 @@ step 'Applying migrations'
 compose run --rm migrate
 
 step "Switching to $FORGEFLOW_VERSION"
-compose up --detach --wait --wait-timeout 180 --remove-orphans api web caddy
+compose up --detach --wait --wait-timeout 180 --remove-orphans
 printf '%s\n' "$FORGEFLOW_VERSION" > "$root/deployed-version"
 
 # ForgeFlow images of earlier versions stay a week, for a quick rollback; after that a rollback

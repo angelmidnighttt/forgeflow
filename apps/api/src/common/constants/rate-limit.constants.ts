@@ -37,4 +37,11 @@ export const RATE_LIMITS = {
   oauthPerIp: { name: 'oauth-ip', limit: 30, windowMs: 15 * MINUTE_MS, by: 'ip' },
   /** Invitation emails one member can send. */
   invitePerUser: { name: 'invite-user', limit: 30, windowMs: HOUR_MS, by: 'user' },
+  /** Webhooks from one address (GitHub sends from a few): generous, a guard against floods. */
+  webhookPerIp: { name: 'webhook-ip', limit: 3000, windowMs: MINUTE_MS, by: 'ip' },
+  /**
+   * Report API calls from one address, checked before the token: CI runners share a few NAT
+   * addresses, so it is generous; it caps a leaked token or a looping pipeline.
+   */
+  reportPerIp: { name: 'report-ip', limit: 600, windowMs: MINUTE_MS, by: 'ip' },
 } as const satisfies Record<string, RateLimitRule>;

@@ -1,3 +1,4 @@
+import { createPrivateKey, type KeyObject } from 'node:crypto';
 import { baseEnvSchema, loadDotEnv, parseEnv, z } from '@forgeflow/config';
 import { databaseEnvSchema } from '@forgeflow/database';
 import { parseKeyring } from '../common/utils/envelope.util.js';
@@ -25,6 +26,36 @@ export const secretEncryptionKeysSchema = z
     }
     return keyring;
   });
+
+/**
+ * GITHUB_APP_PRIVATE_KEY: the PEM GitHub gives (PKCS#1 or PKCS#8), on one line with "\n" for its
+ * line breaks, or base64-encoded. Read into a key object, so a broken key fails at startup.
+ */
+const githubAppPrivateKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .transform((value, ctx): KeyObject => {
+    const pem = value.includes('-----BEGIN')
+      ? value.replaceAll('\\n', '\n')
+      : Buffer.from(value, 'base64').toString('utf8');
+    try {
+      return createPrivateKey(pem);
+    } catch {
+      ctx.issues.push({ code: 'custom', message: 'is not a PEM private key', input: value });
+      return z.NEVER;
+    }
+  });
+
+/** The GitHub App settings; all of them or none (the app's features are then off). */
+const GITHUB_APP_KEYS = [
+  'GITHUB_APP_ID',
+  'GITHUB_APP_SLUG',
+  'GITHUB_APP_PRIVATE_KEY',
+  'GITHUB_APP_WEBHOOK_SECRET',
+  'GITHUB_APP_CLIENT_ID',
+  'GITHUB_APP_CLIENT_SECRET',
+] as const;
 
 /** `address@domain` or `Display Name <address@domain>`. */
 const MAILBOX_PATTERN = /^(?:[^<>@]*<[^<>@\s]+@[^<>@\s]+>|[^<>@\s]+@[^<>@\s]+)$/;
@@ -73,6 +104,21 @@ export const apiEnvSchema = baseEnvSchema
     /** Where GitHub's OAuth pages and REST API are; change only for GitHub Enterprise Server. */
     GITHUB_URL: z.url().default('https://github.com'),
     GITHUB_API_URL: z.url().default('https://api.github.com'),
+
+    /**
+     * The GitHub App that reports deployments (infra/staging/README.md, "GitHub App"). Its
+     * webhook URL is <APP_ORIGIN>/api/v1/webhooks/github and its setup URL, with "Request user
+     * authorization (OAuth) during installation" on, <APP_ORIGIN>/api/v1/github/setup.
+     */
+    GITHUB_APP_ID: z.string().regex(/^\d+$/, 'must be the numeric App ID').optional(),
+    /** The app's URL name: github.com/apps/<slug>. */
+    GITHUB_APP_SLUG: z.string().trim().min(1).optional(),
+    GITHUB_APP_PRIVATE_KEY: githubAppPrivateKeySchema.optional(),
+    /** Signs the webhooks GitHub sends (X-Hub-Signature-256). */
+    GITHUB_APP_WEBHOOK_SECRET: z.string().min(16, 'must be at least 16 characters').optional(),
+    /** The app's own OAuth client, used to check that the installing user owns the installation. */
+    GITHUB_APP_CLIENT_ID: z.string().trim().min(1).optional(),
+    GITHUB_APP_CLIENT_SECRET: z.string().trim().min(1).optional(),
   })
   .refine(
     (env) => env.NODE_ENV !== 'production' || !env.JWT_SECRET.startsWith(DEV_JWT_SECRET_PREFIX),
@@ -97,6 +143,16 @@ export const apiEnvSchema = baseEnvSchema
     {
       path: ['GITHUB_CLIENT_SECRET'],
       message: 'set both GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET, or neither',
+    },
+  )
+  .refine(
+    (env) => {
+      const set = GITHUB_APP_KEYS.filter((key) => env[key] !== undefined).length;
+      return set === 0 || set === GITHUB_APP_KEYS.length;
+    },
+    {
+      path: ['GITHUB_APP_ID'],
+      message: `set all of ${GITHUB_APP_KEYS.join(', ')}, or none`,
     },
   );
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

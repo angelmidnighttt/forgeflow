@@ -6,6 +6,7 @@ ForgeFlow chạy trên một server Ubuntu 24.04 bằng Docker Compose. Mỗi l�
 Internet ──HTTPS──▶ Caddy :443 (chứng chỉ Let's Encrypt tự cấp và gia hạn)
                       ├── /api/*  → api:4000   (role DB forgeflow_app, chịu RLS)
                       └── còn lại → web:3000
+                    worker (việc nền: webhook, đối chiếu GitHub), không nhận traffic
                     postgres:5432 chỉ trong mạng nội bộ của Docker
 ```
 
@@ -94,6 +95,49 @@ gh workflow run deploy-staging.yml -f version=$(git rev-parse origin/main)
 
 Sau đó mở `https://<HOST>`. Lần đầu, Caddy mất vài giây để lấy chứng chỉ.
 
+## GitHub App
+
+Không bắt buộc: thiếu các biến `GITHUB_APP_*` thì ForgeFlow chạy bình thường, chỉ không có nút "Kết nối GitHub". Mỗi môi trường (staging, sau này production, máy dev) dùng **một App riêng**, vì mỗi App chỉ có một webhook URL.
+
+**1. Tạo App** tại https://github.com/settings/apps/new (hoặc `https://github.com/organizations/<org>/settings/apps/new` để App thuộc một organization GitHub):
+
+| Trường                                                 | Giá trị                                                                            |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| GitHub App name                                        | ví dụ `ForgeFlow Staging` (slug của App lấy từ tên này)                            |
+| Homepage URL                                           | `https://<HOST>`                                                                   |
+| Callback URL                                           | `https://<HOST>/api/v1/github/setup`                                               |
+| Request user authorization (OAuth) during installation | **bật**: GitHub đưa người cài về Callback URL kèm `code` (ô Setup URL bị khoá)     |
+| Redirect on update                                     | tắt                                                                                |
+| Webhook → Active                                       | bật                                                                                |
+| Webhook URL                                            | `https://<HOST>/api/v1/webhooks/github`                                            |
+| Webhook secret                                         | một chuỗi ngẫu nhiên: `openssl rand -hex 32` (cũng là `GITHUB_APP_WEBHOOK_SECRET`) |
+| Repository permissions                                 | **Deployments**, **Actions**: Read-only (Metadata: Read-only, bắt buộc)            |
+| Account permissions                                    | không cần quyền nào                                                                |
+| Subscribe to events                                    | **Deployment**, **Deployment status**, **Workflow run**                            |
+| Where can this GitHub App be installed?                | **Any account** nếu người khác cũng thử; **Only on this account** nếu chỉ bạn      |
+
+`installation` và `installation_repositories` luôn được gửi tới mọi GitHub App, không cần đăng ký.
+
+**2. Lấy thông tin**, ở trang của App vừa tạo:
+
+- **App ID** và **Client ID** (đầu trang). Slug nằm trong địa chỉ `https://github.com/apps/<slug>`.
+- **Generate a new client secret**: chép ngay, GitHub chỉ hiện một lần.
+- **Generate a private key**: trình duyệt tải về `<slug>.<ngày>.private-key.pem`.
+
+**3. Đưa vào `.env` của server.** Private key đi thẳng từ máy bạn lên server, không qua đâu khác:
+
+```bash
+scp ~/Downloads/<slug>.*.private-key.pem root@<IP>:/root/github-app.pem
+ssh root@<IP> 'set -e; f=/opt/forgeflow/.env
+  sed -i "/^GITHUB_APP_PRIVATE_KEY=/d" "$f"
+  echo "GITHUB_APP_PRIVATE_KEY=$(base64 -w0 /root/github-app.pem)" >> "$f"
+  shred -u /root/github-app.pem'
+```
+
+Rồi `nano /opt/forgeflow/.env` điền năm biến còn lại: `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` (thiếu một biến thì api không khởi động và báo tên biến). Xoá file `.pem` trên máy bạn nếu không cần giữ. Cuối cùng deploy lại đúng phiên bản đang chạy (xem "Đổi `.env`" ở dưới).
+
+**4. Thử.** Đăng nhập ForgeFlow → **Tích hợp** → **Kết nối GitHub** → chọn repository trên GitHub → quay về ForgeFlow, gắn repository vào một project. Một job Actions có `environment:` (hoặc bất kỳ GitHub Deployment nào) sẽ hiện ở trang **Deployment** của project. Trang **Advanced** của App trên GitHub liệt kê từng lần gửi webhook và câu trả lời (`202`), có nút **Redeliver**.
+
 ## Hằng ngày
 
 - **Push lên `main`** chạy CI theo thứ tự: lint / build / test → image `ghcr.io/<owner>/forgeflow-{api,web}:<sha>` → job **Staging**. Bỏ biến `STAGING_DEPLOY` (hoặc đặt khác `true`) thì CI ngừng tự deploy.
@@ -101,7 +145,7 @@ Sau đó mở `https://<HOST>`. Lần đầu, Caddy mất vài giây để lấy
   1. pull image;
   2. đặt mật khẩu cho role `forgeflow_app`;
   3. chạy migration bằng role owner;
-  4. thay container api / web / Caddy và chờ healthcheck.
+  4. thay container api / worker / web / Caddy và chờ healthcheck (worker: file sống của nó mới hơn 1 phút).
 
   Lỗi ở bước nào thì dừng ở bước đó, bản đang chạy giữ nguyên. Khi thay container, site gián đoạn vài giây.
 
@@ -118,6 +162,7 @@ Sau đó mở `https://<HOST>`. Lần đầu, Caddy mất vài giây để lấy
 ```bash
 forgeflow-compose ps                         # trạng thái container
 forgeflow-compose logs -f --since 1h api     # log api (JSON của pino)
+forgeflow-compose logs -f --since 1h worker  # log worker: webhook, việc nền, đối chiếu GitHub
 tail -n 100 /opt/forgeflow/deploy.log        # các lần deploy gần đây
 forgeflow-compose exec postgres psql -U forgeflow   # psql bằng role owner
 ```
@@ -125,10 +170,10 @@ forgeflow-compose exec postgres psql -U forgeflow   # psql bằng role owner
 **Backup.** Cron chạy [`backup.sh`](scripts/backup.sh) lúc 03:00 giờ server và giữ 14 ngày. Bản dump nằm cùng ổ đĩa với DB, nên hãy chép thêm ra ngoài: `scp root@<IP>:/opt/forgeflow/backups/<file>.dump .`. Khôi phục một bản dump:
 
 ```bash
-forgeflow-compose stop api
+forgeflow-compose stop api worker
 forgeflow-compose exec -T postgres pg_restore -U forgeflow -d forgeflow --clean --if-exists \
   < /opt/forgeflow/backups/<file>.dump
-forgeflow-compose start api
+forgeflow-compose start api worker
 ```
 
 **Chuyển sang domain thật:**
@@ -136,7 +181,7 @@ forgeflow-compose start api
 1. Tạo bản ghi DNS `A` trỏ về `<IP>`.
 2. Sửa `SITE_HOST` trong `.env`.
 3. Chạy `gh variable set STAGING_URL --env staging --body https://<domain>`.
-4. Sửa callback của GitHub OAuth app.
+4. Sửa callback của GitHub OAuth app; với GitHub App: Homepage URL, Callback URL và Webhook URL.
 5. Deploy lại.
 
 Caddy tự lấy chứng chỉ cho tên mới.
@@ -144,6 +189,8 @@ Caddy tự lấy chứng chỉ cho tên mới.
 **Đổi secret:**
 
 - `JWT_SECRET`: access token cũ hết hiệu lực, người dùng tự lấy token mới bằng refresh cookie.
+- `GITHUB_APP_WEBHOOK_SECRET`: đổi trên trang của App trước, rồi sửa `.env` và deploy lại; webhook GitHub gửi trong khoảng giữa bị từ chối (`401`), sau đó bấm **Redeliver** hoặc chờ worker đối chiếu (10 phút).
+- `GITHUB_APP_PRIVATE_KEY` / `GITHUB_APP_CLIENT_SECRET`: tạo cái mới trên trang của App, thay trong `.env`, deploy lại, rồi xoá cái cũ trên GitHub.
 - `APP_DB_PASSWORD`: deploy lại là xong, vì bước đặt role dùng mật khẩu mới trước khi api khởi động.
 - `POSTGRES_PASSWORD`: giá trị này chỉ có tác dụng khi tạo volume. Muốn đổi thì chạy `ALTER ROLE forgeflow PASSWORD '…'` trong psql trước, rồi mới sửa `.env`.
 - `SECRET_ENCRYPTION_KEYS` (khoá mã hoá secret của integration): **không được mất**, vì mất là mất mọi secret đã lưu; chép nó ra chỗ an toàn, tách khỏi bản backup DB. Đổi khoá:

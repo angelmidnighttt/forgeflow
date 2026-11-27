@@ -7,18 +7,15 @@ import {
   type DatabaseHandle,
   type DbExecutor,
 } from '@forgeflow/database';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { DATABASE } from '../../common/constants/injection-tokens.js';
 import type { AuditEntry } from '../../common/types/audit.types.js';
-
-/** A position in the trail: created_at with microseconds (UTC), and the entry's id. */
-interface Position {
-  at: string;
-  id: string;
-}
-
-const POSITION_PATTERN =
-  /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z)\|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+import {
+  after as afterPosition,
+  decodeCursor,
+  encodeCursor,
+  preciseTimestamp,
+} from '../../common/utils/cursor.util.js';
 
 /**
  * The organizations' audit trails. `record` writes inside the caller's transaction, so an entry
@@ -62,16 +59,14 @@ export class AuditService {
           actorName: users.name,
           actorEmail: users.email,
           // Full precision: a JavaScript Date would round created_at to milliseconds.
-          at: sql<string>`to_char(${auditLogs.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+          at: preciseTimestamp(auditLogs.createdAt),
         })
         .from(auditLogs)
         .leftJoin(users, eq(users.id, auditLogs.actorUserId))
         .where(
           and(
             eq(auditLogs.organizationId, organizationId),
-            after
-              ? sql`(${auditLogs.createdAt}, ${auditLogs.id}) < (${after.at}::timestamptz, ${after.id}::uuid)`
-              : undefined,
+            after ? afterPosition(auditLogs.createdAt, auditLogs.id, after) : undefined,
           ),
         )
         .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
@@ -86,16 +81,6 @@ export class AuditService {
         rows.length > query.limit && last ? encodeCursor({ at: last.at, id: last.entry.id }) : null,
     };
   }
-}
-
-function encodeCursor(position: Position): string {
-  return Buffer.from(`${position.at}|${position.id}`).toString('base64url');
-}
-
-/** The position in `cursor`, or null when it is not one this service made. */
-function decodeCursor(cursor: string): Position | null {
-  const match = POSITION_PATTERN.exec(Buffer.from(cursor, 'base64url').toString('utf8'));
-  return match?.[1] && match[2] ? { at: match[1], id: match[2] } : null;
 }
 
 function toEntry(

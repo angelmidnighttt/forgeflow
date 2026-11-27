@@ -8,7 +8,9 @@
     "build": "tsc -b",
     "dev": "node --watch --enable-source-maps dist/main.js",
     "start": "node --enable-source-maps dist/main.js",
-    "secrets:rewrap": "node dist/scripts/rewrap-secrets.js"
+    "secrets:rewrap": "node dist/scripts/rewrap-secrets.js",
+    "dev:worker": "node --watch --enable-source-maps dist/worker.js",
+    "worker": "node --enable-source-maps dist/worker.js"
   },
   "dependencies": {
     "@forgeflow/config": "*",

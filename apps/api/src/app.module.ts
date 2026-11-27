@@ -15,12 +15,43 @@ import type { ApiEnv } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { DeploymentsModule } from './modules/deployments/deployments.module.js';
+import { GithubModule } from './modules/github/github.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { IntegrationsModule } from './modules/integrations/integrations.module.js';
+import { OutboxModule } from './modules/outbox/outbox.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { ProjectsModule } from './modules/projects/projects.module.js';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module.js';
 import { UsersModule } from './modules/users/users.module.js';
+import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
+
+/** What the api and the worker share: settings, clock, logger, database. */
+export function coreImports(env: ApiEnv): Array<Type | DynamicModule> {
+  return [
+    {
+      module: class CoreModule {},
+      global: true,
+      providers: [
+        { provide: API_ENV, useValue: env },
+        { provide: CLOCK, useValue: systemClock },
+      ],
+      exports: [API_ENV, CLOCK],
+    },
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: env.LOG_LEVEL,
+        genReqId: resolveRequestId,
+        autoLogging: { ignore: (req) => QUIET_PATHS.has(req.url ?? '') },
+        redact: { paths: REDACTED_LOG_PATHS, censor: '[REDACTED]' },
+        ...(env.NODE_ENV === 'development'
+          ? { transport: { target: 'pino-pretty', options: { singleLine: true } } }
+          : {}),
+      },
+    }),
+    DatabaseModule,
+  ];
+}
 
 @Module({})
 export class AppModule {
@@ -28,27 +59,7 @@ export class AppModule {
     return {
       module: AppModule,
       imports: [
-        {
-          module: class CoreModule {},
-          global: true,
-          providers: [
-            { provide: API_ENV, useValue: env },
-            { provide: CLOCK, useValue: systemClock },
-          ],
-          exports: [API_ENV, CLOCK],
-        },
-        LoggerModule.forRoot({
-          pinoHttp: {
-            level: env.LOG_LEVEL,
-            genReqId: resolveRequestId,
-            autoLogging: { ignore: (req) => QUIET_PATHS.has(req.url ?? '') },
-            redact: { paths: REDACTED_LOG_PATHS, censor: '[REDACTED]' },
-            ...(env.NODE_ENV === 'development'
-              ? { transport: { target: 'pino-pretty', options: { singleLine: true } } }
-              : {}),
-          },
-        }),
-        DatabaseModule,
+        ...coreImports(env),
         RateLimitModule,
         UsersModule,
         AuthModule,
@@ -56,6 +67,10 @@ export class AppModule {
         ProjectsModule,
         AuditModule,
         IntegrationsModule,
+        OutboxModule,
+        WebhooksModule,
+        DeploymentsModule,
+        GithubModule,
         HealthModule,
         ...extraImports,
       ],

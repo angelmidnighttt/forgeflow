@@ -1,0 +1,48 @@
+# A deploy that GitHub does not track (no `environment:`), reported to ForgeFlow with a project
+# API token instead, the way a GitLab or Jenkins pipeline would. Needs the repository variable
+# FORGEFLOW_URL and the secret FORGEFLOW_TOKEN (README.md).
+name: Reported deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment in the ForgeFlow project
+        default: demo
+      outcome:
+        description: How the deploy ends
+        type: choice
+        options: [success, failure]
+        default: success
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - id: forgeflow
+        # Pin to a commit SHA of the ForgeFlow repository you use.
+        uses: angelmidnighttt/forgeflow/.github/actions/report-deployment@main
+        with:
+          forgeflow-url: ${{ vars.FORGEFLOW_URL }}
+          token: ${{ secrets.FORGEFLOW_TOKEN }}
+          step: start
+          environment: ${{ inputs.environment }}
+      - name: Deploy
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          OUTCOME: ${{ inputs.outcome }}
+        run: |
+          echo "Deploying ${GITHUB_SHA::7} to $ENVIRONMENT"
+          sleep 10
+          [ "$OUTCOME" = success ]
+      - if: always() && steps.forgeflow.outputs.deployment-id != ''
+        uses: angelmidnighttt/forgeflow/.github/actions/report-deployment@main
+        with:
+          forgeflow-url: ${{ vars.FORGEFLOW_URL }}
+          token: ${{ secrets.FORGEFLOW_TOKEN }}
+          step: finish
+          deployment-id: ${{ steps.forgeflow.outputs.deployment-id }}
+          status: ${{ job.status == 'success' && 'success' || 'failure' }}

@@ -476,3 +476,54 @@ describe('integration secrets', () => {
     expect(pgErrorCode(error)).toBe('23503');
   });
 });
+
+describe('every system function', () => {
+  it('runs as the owner with a pinned search_path, and only the api role may call it', async () => {
+    const functions = await owner.pool.query<{
+      proname: string;
+      proconfig: string[] | null;
+      public_can_execute: boolean;
+      app_can_execute: boolean;
+    }>(`
+      SELECT p.proname, p.proconfig,
+             EXISTS (SELECT 1 FROM aclexplode(p.proacl) a WHERE a.grantee = 0) AS public_can_execute,
+             has_function_privilege('forgeflow_app', p.oid, 'EXECUTE') AS app_can_execute
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.prosecdef
+      ORDER BY p.proname`);
+    expect(functions.rows.map((f) => f.proname)).toEqual([
+      'forgeflow_api_token_context',
+      'forgeflow_claim_outbox_events',
+      'forgeflow_complete_outbox_event',
+      'forgeflow_enqueue_github_reconcile',
+      'forgeflow_fail_outbox_event',
+      'forgeflow_invitation_organization',
+      'forgeflow_record_webhook_delivery',
+      'forgeflow_renew_outbox_leases',
+    ]);
+    for (const fn of functions.rows) {
+      expect({
+        name: fn.proname,
+        config: fn.proconfig,
+        public: fn.public_can_execute,
+        app: fn.app_can_execute,
+      }).toEqual({
+        name: fn.proname,
+        config: ['search_path=pg_catalog'],
+        public: false,
+        app: true,
+      });
+    }
+  });
+
+  it("keep webhook deliveries out of the api role's direct reach", async () => {
+    const error = await app
+      .withTenant({ organizationId: orgA }, (tx) =>
+        tx.execute(
+          sql`insert into webhook_deliveries (provider, delivery_id, event, organization_id) values ('github', ${randomUUID()}, 'ping', ${orgA})`,
+        ),
+      )
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(error)).toBe('42501');
+  });
+});

@@ -22,6 +22,7 @@ const EXPECTED: Record<Permission, Record<OrganizationRole, boolean>> = {
   'audit.read': { owner: true, admin: true, member: false, viewer: false },
   'integrations.read': { owner: true, admin: true, member: true, viewer: true },
   'integrations.manage': { owner: true, admin: true, member: false, viewer: false },
+  'api_tokens.manage': { owner: true, admin: true, member: false, viewer: false },
 };
 
 describe('can (role × permission)', () => {

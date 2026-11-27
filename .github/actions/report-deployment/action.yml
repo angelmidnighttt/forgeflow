@@ -1,0 +1,76 @@
+name: Report a deployment to ForgeFlow
+description: >-
+  Tells ForgeFlow a deployment started (start) or ended (finish), with a project API token. For
+  workflows that deploy without GitHub Deployments; jobs with `environment:` are tracked by the
+  ForgeFlow GitHub App on their own.
+
+inputs:
+  forgeflow-url:
+    description: ForgeFlow address, e.g. https://forgeflow.example.com
+    required: true
+  token:
+    description: An API token of the project (store it as a secret)
+    required: true
+  step:
+    description: start or finish
+    required: true
+  deployment-id:
+    description: For finish, the id that start returned
+    required: false
+    default: ''
+  environment:
+    description: For start, the environment's name in the project
+    required: false
+    default: ''
+  status:
+    description: in_progress (default for start), success, failure, error, cancelled
+    required: false
+    default: ''
+  version:
+    description: For start, what is deployed (defaults to the ref or short commit)
+    required: false
+    default: ''
+  environment-url:
+    description: Where the deployed version answers
+    required: false
+    default: ''
+  description:
+    required: false
+    default: ''
+
+outputs:
+  deployment-id:
+    description: The deployment's id in ForgeFlow (start)
+    value: ${{ steps.report.outputs.deployment-id }}
+
+runs:
+  using: composite
+  steps:
+    - id: report
+      shell: bash
+      env:
+        FORGEFLOW_URL: ${{ inputs.forgeflow-url }}
+        FORGEFLOW_TOKEN: ${{ inputs.token }}
+        STEP: ${{ inputs.step }}
+        DEPLOYMENT_ID: ${{ inputs.deployment-id }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        STATUS: ${{ inputs.status }}
+        VERSION: ${{ inputs.version }}
+        ENVIRONMENT_URL: ${{ inputs.environment-url }}
+        DESCRIPTION: ${{ inputs.description }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        script="$GITHUB_ACTION_PATH/../../../tools/report-deployment.sh"
+        args=(--url "$RUN_URL")
+        [ -n "$STATUS" ] && args+=(--status "$STATUS")
+        [ -n "$ENVIRONMENT_URL" ] && args+=(--environment-url "$ENVIRONMENT_URL")
+        [ -n "$DESCRIPTION" ] && args+=(--description "$DESCRIPTION")
+        if [ "$STEP" = start ]; then
+          args+=(--environment "$ENVIRONMENT" --sha "$GITHUB_SHA" --ref "$GITHUB_REF_NAME" \
+                 --creator "$GITHUB_ACTOR")
+          [ -n "$VERSION" ] && args+=(--version "$VERSION")
+          id=$(sh "$script" start "${args[@]}")
+        else
+          id=$(sh "$script" finish "$DEPLOYMENT_ID" "${args[@]}")
+        fi
+        echo "deployment-id=$id" >> "$GITHUB_OUTPUT"

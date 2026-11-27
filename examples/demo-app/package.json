@@ -1,0 +1,14 @@
+{
+  "name": "forgeflow-demo-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny service whose deployments ForgeFlow tracks",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  }
+}

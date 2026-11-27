@@ -22,6 +22,12 @@ export const AUDIT_ACTIONS = [
   'integration.created',
   'integration.secret_rotated',
   'integration.secret_revoked',
+  'outbox_event.retried',
+  'integration.enabled',
+  'integration.disabled',
+  'repository.mapped',
+  'api_token.created',
+  'api_token.revoked',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

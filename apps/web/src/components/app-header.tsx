@@ -27,6 +27,7 @@ export function AppHeader() {
           { href: `/orgs/${organization.id}`, label: 'Tổng quan' },
           { href: `/orgs/${organization.id}/projects`, label: 'Project' },
           { href: `/orgs/${organization.id}/members`, label: 'Thành viên' },
+          { href: `/orgs/${organization.id}/integrations`, label: 'Tích hợp' },
           ...(can(organization.role, 'audit.read')
             ? [{ href: `/orgs/${organization.id}/audit`, label: 'Nhật ký' }]
             : []),

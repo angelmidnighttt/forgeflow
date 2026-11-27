@@ -1,0 +1,38 @@
+{
+  "action": "created",
+  "deployment": {
+    "url": "https://api.github.com/repos/acme/checkout/deployments/1001",
+    "id": 1001,
+    "node_id": "DE_kwDOAAAAAc4AAAPp",
+    "task": "deploy",
+    "original_environment": "production",
+    "environment": "production",
+    "description": "Deploy v1.4.0",
+    "created_at": "2026-11-20T08:00:00Z",
+    "updated_at": "2026-11-20T08:00:00Z",
+    "statuses_url": "https://api.github.com/repos/acme/checkout/deployments/1001/statuses",
+    "repository_url": "https://api.github.com/repos/acme/checkout",
+    "creator": { "login": "octo-deployer", "id": 501, "type": "User" },
+    "sha": "4f2c9a1e7b3d5c8a0e6f1b2d3c4a5e6f7a8b9c0d",
+    "ref": "v1.4.0",
+    "payload": {},
+    "transient_environment": false,
+    "production_environment": true,
+    "performed_via_github_app": null
+  },
+  "workflow": null,
+  "workflow_run": null,
+  "repository": {
+    "id": 7001,
+    "node_id": "R_kgDOAAAbWQ",
+    "name": "checkout",
+    "full_name": "acme/checkout",
+    "private": true,
+    "owner": { "login": "acme", "id": 401, "type": "Organization" },
+    "html_url": "https://github.com/acme/checkout",
+    "default_branch": "main"
+  },
+  "organization": { "login": "acme", "id": 401 },
+  "sender": { "login": "octo-deployer", "id": 501, "type": "User" },
+  "installation": { "id": 88001, "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uODgwMDE=" }
+}

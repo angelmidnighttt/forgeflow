@@ -68,6 +68,8 @@ export const environments = pgTable(
       foreignColumns: [projects.organizationId, projects.id],
     }).onDelete('cascade'),
     uniqueIndex('environments_project_name_key').on(t.projectId, sql`lower(${t.name})`),
+    // Target of the composite foreign keys of an environment's children (deployments).
+    unique('environments_organization_id_key').on(t.organizationId, t.id),
     index('environments_organization_id_idx').on(t.organizationId),
   ],
 );

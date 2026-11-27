@@ -2,7 +2,9 @@
 
 ForgeFlow là control plane đa tenant nối các bước **deploy → giám sát → phát hiện sự cố → điều tra → người duyệt → khắc phục → xác minh hồi phục**. Nó làm việc trên các công cụ sẵn có của team (GitHub, Prometheus/Alertmanager, Argo CD) thay vì thay thế chúng.
 
-**Trạng thái:** đang dựng nền móng — monorepo, API, web, database và môi trường chạy local. Chưa có bản production.
+**Trạng thái:** đang phát triển — đã có tài khoản, organization và phân quyền, project / environment, integration với secret mã hoá, theo dõi deployment từ GitHub và từ pipeline bất kỳ. Chưa có bản production.
+
+Hướng dẫn cho người dùng: [theo dõi deployment từ GitHub](guides/github.md), [báo deploy từ pipeline](guides/report-api.md).
 
 ## Yêu cầu
 
@@ -24,7 +26,7 @@ npm run dev
 1. Tạo `.env` từ `.env.example` nếu chưa có (và bổ sung các biến mới thêm vào `.env.example`).
 2. Bật PostgreSQL (pgvector) và Mailpit bằng Docker Compose, chờ healthy; tạo role `forgeflow_app` mà api dùng để kết nối (`npm run db:app-role`).
 3. Build các package TypeScript, áp dụng migration.
-4. Chạy song song: TypeScript watch, api (tự restart khi code đổi), web.
+4. Chạy song song: TypeScript watch, api (tự restart khi code đổi), worker (việc nền, xem "Worker và transactional outbox"), web.
 
 | Địa chỉ                             | Nội dung                                       |
 | ----------------------------------- | ---------------------------------------------- |
@@ -39,22 +41,23 @@ Nếu cổng đã bị chiếm, đặt cổng khác trước khi chạy và sử
 
 ## Script
 
-| Lệnh                              | Việc làm                                                                                    |
-| --------------------------------- | ------------------------------------------------------------------------------------------- |
-| `npm run dev`                     | Chạy toàn bộ môi trường local                                                               |
-| `npm run build`                   | Build packages, api và web                                                                  |
-| `npm run typecheck`               | Kiểm tra kiểu toàn repo, gồm cả code test                                                   |
-| `npm run lint`                    | ESLint                                                                                      |
-| `npm run format` / `format:check` | Prettier                                                                                    |
-| `npm test`                        | Build rồi chạy Jest (unit + integration, cần `db:up`)                                       |
-| `npm run test:unit`               | Chỉ chạy unit test, không cần dịch vụ ngoài                                                 |
-| `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL và Mailpit local                                                       |
-| `npm run db:app-role`             | Tạo / cập nhật role `forgeflow_app` ở local (chạy lại an toàn)                              |
-| `npm run db:generate`             | Sinh migration từ schema Drizzle (`drizzle-kit generate`)                                   |
-| `npm run db:migrate`              | Áp dụng migration (chạy lặp lại an toàn)                                                    |
-| `npm run db:reset`                | Xoá sạch và migrate lại — chỉ chạy được với DB localhost                                    |
-| `npm run db:seed`                 | Nạp dữ liệu mẫu                                                                             |
-| `npm run secrets:rewrap`          | Chuyển mọi secret của integration sang khoá mã hoá mới nhất (xoay `SECRET_ENCRYPTION_KEYS`) |
+| Lệnh                                      | Việc làm                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `npm run dev`                             | Chạy toàn bộ môi trường local                                                               |
+| `npm run build`                           | Build packages, api và web                                                                  |
+| `npm run typecheck`                       | Kiểm tra kiểu toàn repo, gồm cả code test                                                   |
+| `npm run lint`                            | ESLint                                                                                      |
+| `npm run format` / `format:check`         | Prettier                                                                                    |
+| `npm test`                                | Build rồi chạy Jest (unit + integration, cần `db:up`)                                       |
+| `npm run test:unit`                       | Chỉ chạy unit test, không cần dịch vụ ngoài                                                 |
+| `npm run db:up` / `db:down`               | Bật / tắt PostgreSQL và Mailpit local                                                       |
+| `npm run db:app-role`                     | Tạo / cập nhật role `forgeflow_app` ở local (chạy lại an toàn)                              |
+| `npm run db:generate`                     | Sinh migration từ schema Drizzle (`drizzle-kit generate`)                                   |
+| `npm run db:migrate`                      | Áp dụng migration (chạy lặp lại an toàn)                                                    |
+| `npm run db:reset`                        | Xoá sạch và migrate lại — chỉ chạy được với DB localhost                                    |
+| `npm run db:seed`                         | Nạp dữ liệu mẫu                                                                             |
+| `npm run secrets:rewrap`                  | Chuyển mọi secret của integration sang khoá mã hoá mới nhất (xoay `SECRET_ENCRYPTION_KEYS`) |
+| `npm run github:replay -- <event> <file>` | Gửi một webhook GitHub có ký tới api local (thử GitHub App không cần GitHub)                |
 
 ## Cấu trúc
 
@@ -69,12 +72,15 @@ apps/
 packages/
   config/       Nạp .env và validate biến môi trường bằng zod
   contracts/    Schema zod + kiểu dùng chung giữa api và web (envelope, auth, organizations,
-                RBAC, health)
+                RBAC, project, integration, GitHub, deployment, outbox, health)
   database/     Drizzle: schema, migration, script migrate/reset/seed
 infra/
   compose/      Docker Compose cho môi trường local
   docker/       Dockerfile của api và web
-scripts/        Script tiện ích cho môi trường dev
+scripts/        Script tiện ích cho môi trường dev (tạo .env, gửi lại webhook GitHub…)
+tools/          Script người dùng chạy trong pipeline của họ (report-deployment.sh)
+.github/actions/report-deployment/
+                Composite action báo deploy cho workflow GitHub không dùng GitHub Deployments
 ```
 
 ## Cấu trúc api
@@ -83,7 +89,8 @@ scripts/        Script tiện ích cho môi trường dev
 
 ```text
 apps/api/src/
-  main.ts               Khởi động process
+  main.ts               Khởi động api
+  worker.ts             Khởi động worker (outbox, đối chiếu GitHub); worker.module.ts
   app.module.ts         Module gốc: nạp các module, guard / filter / interceptor toàn cục
   app.factory.ts        Tạo app Nest (dùng chung cho main.ts và test)
   config/env.ts         Biến môi trường (zod)
@@ -94,7 +101,8 @@ apps/api/src/
     decorators/         @Public(), @CurrentAuth(), @RateLimit(), @RequirePermission(),
                         @CurrentMembership()
     filters/            HttpExceptionFilter (bọc lỗi thành { error })
-    guards/             JwtAuthGuard, OriginGuard (CSRF), RateLimitGuard, OrgPermissionGuard
+    guards/             JwtAuthGuard, OriginGuard (CSRF), RateLimitGuard, OrgPermissionGuard,
+                        ApiTokenGuard (report API)
     interceptors/       EnvelopeInterceptor (bọc kết quả thành { data })
     pipes/              ZodValidationPipe
     templates/          Template email (layout chung, xác minh, đặt lại / đã đổi mật khẩu, lời mời)
@@ -111,6 +119,14 @@ apps/api/src/
                         Service: Organizations, Memberships, Invitations
     mail/               MailService (gửi email qua SMTP)
     rate-limit/         RateLimitService (bộ đếm cửa sổ cố định trong PostgreSQL)
+    projects/           Project, environment
+    integrations/       Integration, secret mã hoá envelope
+    audit/              AuditService, AuditController (nhật ký hoạt động)
+    webhooks/           WebhooksController (nhận webhook, kiểm chữ ký), WebhooksService
+    outbox/             OutboxService, OutboxController (việc dead), OutboxWorkerService (worker)
+    github/             GitHub App: GithubAppService (API GitHub), GithubInstallations,
+                        Repositories, GithubWebhooks (xử lý event), GithubReconcile
+    deployments/        Deployments, Reports (report API), ApiTokens
     health/             HealthController (/health, /ready)
 ```
 
@@ -139,23 +155,25 @@ Test nằm trong `apps/api/test/` và `apps/web/test/`, cùng cấu trúc với 
 
 `apps/web` dùng Next.js 16 (App Router), Tailwind CSS v4 và [shadcn/ui](https://ui.shadcn.com) (style `radix-nova`). Giao diện bằng tiếng Việt; font Inter có bộ ký tự tiếng Việt.
 
-| Trang                                | Nội dung                                                                   |
-| ------------------------------------ | -------------------------------------------------------------------------- |
-| `/login`                             | Đăng nhập bằng email + mật khẩu hoặc GitHub (nút chỉ hiện khi đã cấu hình) |
-| `/register`                          | Tạo tài khoản                                                              |
-| `/forgot-password`                   | Gửi link đặt lại mật khẩu                                                  |
-| `/reset-password`                    | Mở từ email: đặt mật khẩu mới                                              |
-| `/verify-email`                      | Mở từ email: xác minh email                                                |
-| `/`                                  | Mở organization dùng gần nhất; chưa có org thì màn hình tạo org đầu tiên   |
-| `/orgs/new`                          | Tạo organization                                                           |
-| `/orgs/[orgId]`                      | Tổng quan organization (vai trò của bạn, trạng thái hệ thống)              |
-| `/orgs/[orgId]/projects`             | Các project và environment của chúng; owner / admin tạo project            |
-| `/orgs/[orgId]/projects/[projectId]` | Một project: đổi tên; environment (thêm, đổi tên, bật / tắt bảo vệ)        |
-| `/orgs/[orgId]/members`              | Thành viên (đổi vai trò, xoá, rời) và lời mời (gửi, thu hồi)               |
-| `/orgs/[orgId]/audit`                | Nhật ký hoạt động (owner / admin)                                          |
-| `/orgs/[orgId]/settings`             | Đổi tên, rời organization                                                  |
-| `/invitations/accept`                | Mở từ email mời: xem và nhận lời mời                                       |
-| `/account`                           | Tài khoản (cần đăng nhập): thông tin, đổi mật khẩu, thiết bị đăng nhập     |
+| Trang                                            | Nội dung                                                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `/login`                                         | Đăng nhập bằng email + mật khẩu hoặc GitHub (nút chỉ hiện khi đã cấu hình)                     |
+| `/register`                                      | Tạo tài khoản                                                                                  |
+| `/forgot-password`                               | Gửi link đặt lại mật khẩu                                                                      |
+| `/reset-password`                                | Mở từ email: đặt mật khẩu mới                                                                  |
+| `/verify-email`                                  | Mở từ email: xác minh email                                                                    |
+| `/`                                              | Mở organization dùng gần nhất; chưa có org thì màn hình tạo org đầu tiên                       |
+| `/orgs/new`                                      | Tạo organization                                                                               |
+| `/orgs/[orgId]`                                  | Tổng quan organization (vai trò của bạn, trạng thái hệ thống)                                  |
+| `/orgs/[orgId]/projects`                         | Các project và environment của chúng; owner / admin tạo project                                |
+| `/orgs/[orgId]/projects/[projectId]`             | Một project: đổi tên; environment (thêm, đổi tên, bật / tắt bảo vệ); API token (owner / admin) |
+| `/orgs/[orgId]/projects/[projectId]/deployments` | Deployment và lần chạy CI của project: lọc theo environment, loại, trạng thái                  |
+| `/orgs/[orgId]/members`                          | Thành viên (đổi vai trò, xoá, rời) và lời mời (gửi, thu hồi)                                   |
+| `/orgs/[orgId]/integrations`                     | GitHub App: kết nối, gắn repository vào project, webhook gần đây; việc nền lỗi                 |
+| `/orgs/[orgId]/audit`                            | Nhật ký hoạt động (owner / admin)                                                              |
+| `/orgs/[orgId]/settings`                         | Đổi tên, rời organization                                                                      |
+| `/invitations/accept`                            | Mở từ email mời: xem và nhận lời mời                                                           |
+| `/account`                                       | Tài khoản (cần đăng nhập): thông tin, đổi mật khẩu, thiết bị đăng nhập                         |
 
 - **Phiên đăng nhập** (`src/features/auth/auth-provider.tsx`): access token chỉ nằm trong bộ nhớ của tab, không lưu vào storage. Khi tải trang, web gọi `POST /api/v1/auth/refresh` (refresh cookie `HttpOnly`) để lấy lại; tự refresh 1 phút trước khi token hết hạn, và refresh rồi thử lại một lần khi API trả `401`.
   - Mỗi lần refresh thay cookie, nên chỉ một lần refresh chạy tại một thời điểm: trong một tab nhờ promise dùng chung, giữa các tab nhờ Web Locks API.
@@ -220,17 +238,20 @@ Test nằm trong `apps/api/test/` và `apps/web/test/`, cùng cấu trúc với 
 
 Vượt giới hạn → `429 RATE_LIMITED` kèm header `Retry-After` (giây). Bộ đếm cửa sổ cố định nằm trong PostgreSQL (bảng `rate_limit_counters`, chuyển sang Redis ở Phase 11). Giới hạn nằm ở `common/constants/rate-limit.constants.ts`:
 
-| Giới hạn                            | Mức                                           |
-| ----------------------------------- | --------------------------------------------- |
-| Đăng nhập theo IP                   | 30 lần / 15 phút                              |
-| Đăng nhập theo email (khoá tạm)     | 10 lần / 15 phút                              |
-| Đăng ký theo IP                     | 10 lần / giờ                                  |
-| Quên mật khẩu theo IP               | 10 lần / giờ                                  |
-| Email đặt lại mật khẩu theo địa chỉ | 3 email / giờ (vượt thì vẫn `204`, không gửi) |
-| Dùng link email theo IP             | 30 lần / 15 phút                              |
-| Gửi lại email xác minh theo user    | 3 lần / giờ                                   |
-| Đổi mật khẩu theo user              | 5 lần / 15 phút                               |
-| GitHub OAuth theo IP                | 30 lần / 15 phút                              |
+| Giới hạn                                  | Mức                                           |
+| ----------------------------------------- | --------------------------------------------- |
+| Đăng nhập theo IP                         | 30 lần / 15 phút                              |
+| Đăng nhập theo email (khoá tạm)           | 10 lần / 15 phút                              |
+| Đăng ký theo IP                           | 10 lần / giờ                                  |
+| Quên mật khẩu theo IP                     | 10 lần / giờ                                  |
+| Email đặt lại mật khẩu theo địa chỉ       | 3 email / giờ (vượt thì vẫn `204`, không gửi) |
+| Dùng link email theo IP                   | 30 lần / 15 phút                              |
+| Gửi lại email xác minh theo user          | 3 lần / giờ                                   |
+| Đổi mật khẩu theo user                    | 5 lần / 15 phút                               |
+| GitHub OAuth theo IP                      | 30 lần / 15 phút                              |
+| Mời thành viên theo user                  | 30 lời mời / giờ                              |
+| Webhook theo IP                           | 3000 lần / phút                               |
+| Report API theo IP (trước khi kiểm token) | 600 lần / phút                                |
 
 - **Khoá tạm**: đếm số lần thử của một email kể từ lần đăng nhập thành công gần nhất; quá giới hạn thì email bị khoá tới hết cửa sổ, kể cả khi nhập đúng mật khẩu. Áp dụng cả với email không có tài khoản nên không dò được. Đặt lại mật khẩu mở khoá.
 - **Sau reverse proxy phải đặt `TRUST_PROXY`** (số hop, ví dụ `1`, hoặc địa chỉ proxy). Không đặt thì `X-Forwarded-For` bị bỏ qua — an toàn, nhưng sau proxy mọi người dùng sẽ chung IP của proxy và chung bộ đếm. Ở local, `.env.example` đặt `loopback` vì web dev server proxy `/api`.
@@ -330,20 +351,123 @@ Integration là một kết nối của org tới hệ thống bên ngoài (GitH
 
 Tạo integration không có route chung: luồng kết nối của từng loại (cài GitHub App…) gọi `IntegrationsService.create()`.
 
+## Worker và transactional outbox
+
+Việc không nên chạy trong request (xử lý webhook, gọi GitHub, sau này gửi thông báo…) đi qua **transactional outbox**: code ghi một dòng vào `outbox_events` **trong cùng transaction** với thay đổi sinh ra nó, rồi process **worker** (`apps/api/src/worker.ts`, cùng image với api) lấy ra xử lý. Không có chuyện thay đổi đã lưu mà việc kèm theo bị mất, hay việc chạy cho một thay đổi đã rollback.
+
+- **Lấy việc**: `FOR UPDATE SKIP LOCKED` theo topic, mỗi lần tối đa 10 việc, mỗi việc có một lease 60 giây (`locked_until`) và một fencing token (`lock_token`). Trong lúc xử lý batch, worker gia hạn lease của các việc còn cầm mỗi 20 giây (tối đa 30 phút, để handler bị treo không giữ việc mãi). Worker chết giữa chừng thì hết lease việc được lấy lại, và worker cũ không ghi đè được kết quả của worker mới. Nhiều worker chạy song song an toàn.
+- **Đánh thức**: `LISTEN forgeflow_outbox` (`pg_notify` khi thêm việc), kèm quét mỗi 5 giây phòng khi mất thông báo.
+- **Thử lại**: lỗi thì thử lại sau 10 giây, 20, 40… (tối đa 1 giờ, ±20% ngẫu nhiên); sau 8 lần, hoặc khi handler ném `PermanentOutboxError` (dữ liệu hỏng, thử lại vô ích), việc chuyển sang `dead` cùng lỗi cuối. Owner / admin xem và chạy lại việc `dead` ở trang **Tích hợp** (ghi `outbox_event.retried` vào nhật ký).
+- **Sức khoẻ**: worker ghi `/tmp/forgeflow-worker.alive` mỗi vòng lặp và mỗi lần gia hạn lease; healthcheck của container kiểm tra file này mới hơn 1 phút. Dừng (`SIGTERM`) thì xử lý xong batch đang cầm rồi mới thoát (việc chưa xong khi container bị giết sẽ hết lease và được lấy lại).
+- Ở DB: role `forgeflow_app` không `DELETE` được `outbox_events`; việc nhận / xong / lỗi đi qua các hàm `SECURITY DEFINER` hẹp (`forgeflow_claim_outbox_events`, `forgeflow_renew_outbox_leases`, `forgeflow_complete_outbox_event`, `forgeflow_fail_outbox_event`) vì worker làm việc cho mọi org.
+
+| Endpoint (dưới `/api/v1/organizations/:orgId`) | Quyền cần             | Việc làm                                  |
+| ---------------------------------------------- | --------------------- | ----------------------------------------- |
+| `GET /events/dead`                             | `integrations.manage` | Việc nền đã dừng thử, mới nhất trước      |
+| `POST /events/:eventId/retry`                  | `integrations.manage` | Chạy lại ngay (`204`), đếm lại số lần thử |
+
+## GitHub App
+
+ForgeFlow theo dõi deployment qua một **GitHub App** (không phải OAuth app đăng nhập): org cài App vào tài khoản / organization GitHub của họ, chọn repository, ForgeFlow nhận webhook và đọc API của GitHub bằng token của bản cài đặt đó. App chỉ cần quyền **đọc**. Đăng ký App và đặt biến môi trường: [infra/staging/README.md](infra/staging/README.md#github-app). Không đặt 6 biến `GITHUB_APP_*` thì tính năng tắt (`GET /github/app` trả `configured: false`, nút kết nối không hiện).
+
+- **Kết nối** (owner / admin, trang **Tích hợp**): `POST …/integrations/github/install` trả link cài App kèm `state` (JWT ngắn hạn) và đặt cookie `ff_github` cho cùng trình duyệt. GitHub đưa trình duyệt về `GET /api/v1/github/setup`, api kiểm tra: `state` và cookie khớp; đổi `code` (App bật "Request user authorization during installation") lấy token của người dùng GitHub và xác nhận bản cài đặt nằm trong `/user/installations` của **chính người đó** (không thể nhận bản cài đặt của người khác bằng cách đoán `installation_id`); người bấm vẫn còn quyền `integrations.manage`. Rồi mới tạo integration và nạp danh sách repository. Lỗi nào cũng quay về trang Tích hợp với `?github_error=<mã>`.
+- **Một bản cài đặt thuộc một org** (`unique (kind, external_id)`); kết nối lại cùng tài khoản GitHub thì dùng lại integration cũ.
+- **Repository → project**: mỗi repository của bản cài đặt được gắn với tối đa một project (`PATCH /repositories/:id`, ghi `repository.mapped`). Repository chưa gắn thì deployment của nó bị bỏ qua.
+- **Webhook GitHub** được theo dõi: `installation` (gỡ / tạm ngưng → integration `disabled`, mở lại → `active`), `installation_repositories`, `deployment`, `deployment_status`, `workflow_run`.
+- **Đối chiếu**: GitHub không hứa giao đủ webhook, nên mỗi 10 phút worker đọc lại 30 deployment và 30 lần chạy Actions mới nhất của mọi repository đã gắn và ghi chúng như webhook (idempotent, không đếm trùng). Status chỉ được đọc cho deployment chưa biết hoặc chưa kết thúc, nên mỗi repository tốn khoảng 2 request mỗi lượt, xa giới hạn 5000 request / giờ của một bản cài đặt.
+- Private key của App chỉ nằm trong biến môi trường; token cài đặt (1 giờ) được giữ trong bộ nhớ tới 5 phút trước khi hết hạn.
+
+### Webhook
+
+`POST /api/v1/webhooks/github` (công khai, rate limit theo IP):
+
+1. Kiểm tra chữ ký `X-Hub-Signature-256` (HMAC-SHA256 trên **đúng byte** GitHub gửi, so sánh thời gian hằng) bằng `GITHUB_APP_WEBHOOK_SECRET`. Sai → `401 INVALID_SIGNATURE`.
+2. Ghi `webhook_deliveries` và một việc `github.webhook` vào outbox trong một transaction, khử trùng theo `X-GitHub-Delivery`: GitHub gửi lại cùng delivery thì không xử lý lần hai.
+3. Trả `202` ngay (GitHub chỉ chờ 10 giây); worker xử lý sau.
+
+Owner / admin xem các delivery gần đây của một bản cài đặt ở trang Tích hợp.
+
+**Thử ở local**: GitHub không gọi được `localhost`, nên hoặc:
+
+- Mở tunnel tới api và đặt webhook URL của App (bản dev riêng) là địa chỉ tunnel + `/api/v1/webhooks/github`: `npx smee-client --url https://smee.io/<kênh> --target http://localhost:4000/api/v1/webhooks/github`, hoặc `cloudflared tunnel --url http://localhost:4000`. Callback URL của App vẫn là `http://localhost:3000/api/v1/github/setup` (trình duyệt của bạn mở nó, không cần tunnel).
+- Hoặc không cần GitHub: gửi lại payload mẫu có ký bằng `GITHUB_APP_WEBHOOK_SECRET` trong `.env`: `npm run github:replay -- deployment apps/api/test/fixtures/github/deployment.created.json --installation <id>` (`--times 3` gửi cùng một delivery ba lần để xem khử trùng).
+
+| Endpoint                                                         | Quyền cần             | Việc làm                                   |
+| ---------------------------------------------------------------- | --------------------- | ------------------------------------------ |
+| `GET /api/v1/github/app`                                         | đăng nhập             | App đã cấu hình chưa, slug của nó          |
+| `POST /api/v1/organizations/:orgId/integrations/github/install`  | `integrations.manage` | Link cài App (đặt cookie `state`)          |
+| `GET /api/v1/github/setup`                                       | công khai (cookie)    | GitHub đưa trình duyệt về; redirect về web |
+| `GET /api/v1/organizations/:orgId/integrations/:id/repositories` | `integrations.read`   | Repository của bản cài đặt                 |
+| `GET /api/v1/organizations/:orgId/integrations/:id/deliveries`   | `integrations.read`   | 20 webhook gần nhất                        |
+| `PATCH /api/v1/organizations/:orgId/repositories/:id`            | `integrations.manage` | `{ "projectId": … \| null }`: gắn / bỏ gắn |
+| `POST /api/v1/webhooks/github`                                   | chữ ký HMAC           | Nhận webhook                               |
+
+## Deployment
+
+Mỗi deployment là một lần đưa một phiên bản lên một environment của project (`kind = deployment`), hoặc một lần chạy CI (`kind = workflow_run`, không có environment). Chúng đến từ hai nguồn:
+
+- **GitHub** (`source = github`): `deployment` / `deployment_status` của GitHub Deployments (job Actions có `environment:` tạo ra chúng tự động) và `workflow_run` của Actions, trên repository đã gắn vào project.
+- **Report API** (`source = api`): pipeline bất kỳ (GitLab CI, Jenkins, script…) báo bằng API token của project.
+
+Quy tắc chung:
+
+- **Idempotent**: một deployment là duy nhất theo `(project, source, kind, external_id)`; mỗi status của GitHub ghi một lần theo id của nó. Webhook đến lại, đến trễ, hay đối chiếu đọc lại đều không tạo bản trùng.
+- **Không lùi trạng thái**: status mang thời điểm của nó (`status_at`); status cũ đến sau status mới chỉ được thêm vào lịch sử (`deployment_events`), không ghi đè trạng thái hiện tại.
+- **Trạng thái**: `queued`, `in_progress`, `success`, `failure`, `error`, `cancelled`, `inactive` (GitHub: bản này đã bị bản sau thay). `started_at` / `finished_at` cho ra thời lượng.
+- **Environment**: theo tên (không phân biệt hoa thường); tên chưa có trong project thì environment được tạo (ghi `environment.created` với người thực hiện `system`).
+- **Phiên bản**: `version` báo lên, hoặc ref (tag / nhánh), hoặc 7 ký tự đầu của commit.
+
+`GET /api/v1/organizations/:orgId/projects/:projectId/deployments` (`projects.read`), lọc `environmentId`, `kind`, `status`, phân trang `cursor` như nhật ký. Web: nút **Deployment** trên trang project.
+
+### Report API
+
+Hướng dẫn cho người dùng, có ví dụ GitLab CI / Jenkins / GitHub Actions: [guides/report-api.md](guides/report-api.md).
+
+Owner / admin tạo **API token** trên trang project (`api_tokens.manage`): token `ffp_…` hiện **một lần**; DB chỉ giữ SHA-256 của nó. Token chỉ báo được deploy cho project của nó, có thể đặt hạn (30 / 90 / 365 ngày) và thu hồi; `last_used_at` cập nhật tối đa mỗi phút một lần. Tạo / thu hồi được ghi vào nhật ký.
+
+```bash
+curl -X POST "$FORGEFLOW_URL/api/v1/deployments" \
+  -H "Authorization: Bearer $FORGEFLOW_TOKEN" \
+  -H "Idempotency-Key: $CI_JOB_ID" \
+  -H "Content-Type: application/json" \
+  -d '{"environment":"production","version":"v1.4.0","sha":"9fceb02","url":"https://ci.example.com/jobs/1"}'
+# → 201 { "data": { "id": "…", "status": "in_progress", … } }
+
+curl -X PATCH "$FORGEFLOW_URL/api/v1/deployments/<id>" \
+  -H "Authorization: Bearer $FORGEFLOW_TOKEN" -H "Content-Type: application/json" \
+  -d '{"status":"success","environmentUrl":"https://app.example.com"}'
+```
+
+- **`Idempotency-Key` bắt buộc** với `POST`: gửi lại cùng key và cùng body → `200` với deployment đã tạo; cùng key mà body khác → `422 IDEMPOTENCY_KEY_REUSED`. Dùng id của lần chạy CI để pipeline chạy lại bước báo không tạo deploy thứ hai.
+- `url` / `environmentUrl` chỉ nhận `http(s)`. Pipeline không báo được `inactive`.
+- Sẵn dùng: `tools/report-deployment.sh` (chỉ cần `sh` và `curl`; lệnh `start` in ra id, `finish <id>`; key lấy từ `GITHUB_RUN_ID` / `CI_JOB_ID` / `BUILD_TAG`), và composite action `.github/actions/report-deployment` cho workflow GitHub không dùng GitHub Deployments.
+
+| Endpoint                                           | Quyền cần           | Việc làm                                    |
+| -------------------------------------------------- | ------------------- | ------------------------------------------- |
+| `GET …/projects/:projectId/api-tokens`             | `api_tokens.manage` | Token của project (không có secret)         |
+| `POST …/projects/:projectId/api-tokens`            | `api_tokens.manage` | `{ name, expiresInDays? }` → secret một lần |
+| `DELETE …/projects/:projectId/api-tokens/:tokenId` | `api_tokens.manage` | Thu hồi                                     |
+| `POST /api/v1/deployments`                         | API token           | Báo một deployment bắt đầu                  |
+| `PATCH /api/v1/deployments/:deploymentId`          | API token           | Status sau đó (chỉ deployment của project)  |
+
 ## Nhật ký hoạt động (audit log)
 
 Mỗi thao tác nhạy cảm trong một org được ghi vào bảng `audit_logs` **trong cùng transaction** với chính thao tác đó: không thể có thay đổi mà thiếu nhật ký, hay nhật ký mà thay đổi không xảy ra. Ghi nhật ký lỗi thì thao tác bị huỷ theo (`500`).
 
-| Hành động                                                                         | Khi nào                                                |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `organization.created`, `organization.renamed`                                    | Tạo org; đổi tên (chỉ khi tên thật sự đổi)             |
-| `member.role_changed`, `member.removed`, `member.left`                            | Đổi vai trò (khi khác vai trò cũ); xoá người khác; rời |
-| `invitation.created`, `invitation.revoked`, `invitation.accepted`                 | Mời; thu hồi (kể cả khi gửi email lỗi); nhận lời mời   |
-| `project.created`, `project.renamed`                                              | Tạo, đổi tên project                                   |
-| `integration.created`, `integration.secret_rotated`, `integration.secret_revoked` | Kết nối integration; đổi, thu hồi secret               |
-| `environment.created`, `environment.renamed`, `environment.(un)protected`         | Thêm, đổi tên, bật / tắt bảo vệ environment            |
+| Hành động                                                                         | Khi nào                                                                                      |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `organization.created`, `organization.renamed`                                    | Tạo org; đổi tên (chỉ khi tên thật sự đổi)                                                   |
+| `member.role_changed`, `member.removed`, `member.left`                            | Đổi vai trò (khi khác vai trò cũ); xoá người khác; rời                                       |
+| `invitation.created`, `invitation.revoked`, `invitation.accepted`                 | Mời; thu hồi (kể cả khi gửi email lỗi); nhận lời mời                                         |
+| `project.created`, `project.renamed`                                              | Tạo, đổi tên project                                                                         |
+| `integration.created`, `integration.secret_rotated`, `integration.secret_revoked` | Kết nối integration; đổi, thu hồi secret                                                     |
+| `environment.created`, `environment.renamed`, `environment.(un)protected`         | Thêm, đổi tên, bật / tắt bảo vệ environment (kể cả `system` tạo environment theo deployment) |
+| `integration.enabled`, `integration.disabled`                                     | GitHub App được mở lại; bị gỡ / tạm ngưng trên GitHub (`system`)                             |
+| `repository.mapped`                                                               | Gắn / bỏ gắn repository với project                                                          |
+| `api_token.created`, `api_token.revoked`                                          | Tạo, thu hồi API token của project                                                           |
+| `outbox_event.retried`                                                            | Chạy lại một việc nền đã dừng thử                                                            |
 
-- Mỗi entry có: người thực hiện (`actor_user_id`, hoặc `system` cho worker sau này), đối tượng (`target_type` + `target_id`), chi tiết đủ để đọc lại sau (`metadata`: tên, email, vai trò trước / sau — **không bao giờ có secret**), IP client và `X-Request-Id` của request (để tìm log).
+- Mỗi entry có: người thực hiện (`actor_user_id`, hoặc `system` cho việc worker làm), đối tượng (`target_type` + `target_id`), chi tiết đủ để đọc lại sau (`metadata`: tên, email, vai trò trước / sau — **không bao giờ có secret**), IP client và `X-Request-Id` của request (để tìm log).
 - **Chỉ thêm, không sửa / xoá**: role `forgeflow_app` có `INSERT` và `SELECT` trên `audit_logs`, không có `UPDATE` / `DELETE` (migration 0012), cộng RLS theo org như mọi bảng tenant.
 - Ghi từ code: `AuditService.record(tx, entry)` với `tx` là transaction của thao tác; người thực hiện lấy bằng `@CurrentActor()` trong controller.
 - `GET /api/v1/organizations/:orgId/audit-logs?limit=50&cursor=…` (quyền `audit.read`: owner, admin): mới nhất trước, phân trang bằng `nextCursor` (theo vị trí `created_at, id`, nên thêm entry mới không làm lệch trang). Web: trang **Nhật ký** (`/orgs/[orgId]/audit`).
@@ -360,8 +484,8 @@ Dữ liệu tenant được cách ly hai lớp: tầng app kiểm tra membership
 - api **từ chối khởi động** nếu `DATABASE_URL` là superuser hoặc role có `BYPASSRLS`.
 - Migration cấp quyền cho `forgeflow_app` nhưng không đặt mật khẩu. Ở local, role đăng nhập được tạo bởi `infra/compose/postgres/init/01-app-role.sql` (Postgres chạy khi tạo volume; volume cũ: `npm run db:app-role`); CI chạy cùng file đó; trên server (`infra/staging`), mỗi lần deploy chạy lại file này với mật khẩu lấy từ `APP_DB_PASSWORD` (biến `FORGEFLOW_APP_DB_PASSWORD` của psql; không đặt thì mặc định là `forgeflow_app`).
 - **Truy vấn bảng tenant phải chạy trong `database.withTenant({ organizationId, userId }, (tx) => …)`**: mở transaction và đặt `app.organization_id` / `app.user_id` (chỉ trong transaction). Không có context thì policy không khớp dòng nào.
-- Policy hiện có: `organizations`, `memberships`, `invitations`, `projects`, `environments`, `integrations`, `integration_secrets` đọc / ghi theo org trong context (`audit_logs`: chỉ đọc và thêm; `integration_secrets`: không xoá, chỉ sửa `revoked_at`); user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
-- Luồng chưa biết org (xem / nhận lời mời theo token) dùng hàm `SECURITY DEFINER` hẹp (`forgeflow_invitation_organization`) chỉ trả org id, rồi chạy phần còn lại trong `withTenant`.
+- Policy hiện có: `organizations`, `memberships`, `invitations`, `projects`, `environments`, `integrations`, `integration_secrets`, `repositories`, `deployments`, `deployment_events`, `api_tokens`, `idempotency_keys`, `outbox_events` đọc / ghi theo org trong context (`audit_logs`: chỉ đọc và thêm; `integration_secrets`: không xoá, chỉ sửa `revoked_at`; `webhook_deliveries`: tenant chỉ đọc; `api_tokens`, `outbox_events`: không xoá); user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
+- Luồng chưa biết org dùng hàm `SECURITY DEFINER` hẹp (`SET search_path = pg_catalog`, chỉ `forgeflow_app` được `EXECUTE`) chỉ làm đúng một việc, rồi chạy phần còn lại trong `withTenant`: xem / nhận lời mời theo token (`forgeflow_invitation_organization`), ghi webhook (`forgeflow_record_webhook_delivery`: tìm org theo installation), xác thực API token (`forgeflow_api_token_context`), worker (`forgeflow_claim_outbox_events`…, `forgeflow_enqueue_github_reconcile`). Test RLS liệt kê đủ các hàm này: thêm hàm mới mà không thêm vào test thì test đỏ.
 - **Thêm bảng tenant mới**: cột `organization_id NOT NULL`; trong một migration viết tay (`cd packages/database && npx drizzle-kit generate --custom --name <tên>`): `ENABLE` + `FORCE ROW LEVEL SECURITY` và policy theo `forgeflow_current_organization_id()`; composite FK `(organization_id, …)` tới bảng cha (bảng cha có `UNIQUE (organization_id, id)`; ví dụ `environments` → `projects`). Test catalog sẽ đỏ nếu quên bật RLS.
 
 ## Docker image
@@ -372,6 +496,9 @@ docker build -f infra/docker/web.Dockerfile -t forgeflow-web .
 
 # Migration chạy như một bước riêng, bằng role owner, trước khi bản mới nhận traffic
 docker run --rm -e MIGRATION_DATABASE_URL=postgres://... forgeflow-api node packages/database/dist/scripts/migrate.js
+
+# Worker: cùng image với api, khác lệnh
+docker run --rm --env-file .env forgeflow-api node --enable-source-maps apps/api/dist/worker.js
 ```
 
 CI build cả hai image cho mọi pull request; trên `main` thì đẩy thêm lên `ghcr.io/<owner>/forgeflow-{api,web}:<commit sha>`.
@@ -386,6 +513,6 @@ CI build cả hai image cho mọi pull request; trên `main` thì đẩy thêm l
 
 ## Deploy
 
-Staging chạy trên một VPS bằng Docker Compose, với Caddy (HTTPS tự động) đứng trước web và api. Mỗi lần push lên `main` mà CI xanh thì job **Staging** tự deploy commit đó qua SSH. Muốn rollback thì chạy workflow **Deploy to staging** với SHA cũ. Cách cài server, cấu hình GitHub, backup và vận hành: [infra/staging/README.md](infra/staging/README.md).
+Staging chạy trên một VPS bằng Docker Compose, với Caddy (HTTPS tự động) đứng trước web và api. Mỗi lần push lên `main` mà CI xanh thì job **Staging** tự deploy commit đó qua SSH. Server chạy api, worker và web. Muốn rollback thì chạy workflow **Deploy to staging** với SHA cũ. Cách cài server, cấu hình GitHub, backup và vận hành: [infra/staging/README.md](infra/staging/README.md).
 
 Chưa có bản production. Error tracking sẽ dùng Sentry.

@@ -12,7 +12,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "node scripts/ensure-env.mjs && npm run db:up && npm run db:app-role && tsc -b && npm run db:migrate && concurrently -k -n build,api,web -c gray,cyan,magenta \"tsc -b -w --preserveWatchOutput\" \"npm run dev -w @forgeflow/api\" \"npm run dev -w @forgeflow/web\"",
+    "dev": "node scripts/ensure-env.mjs && npm run db:up && npm run db:app-role && tsc -b && npm run db:migrate && concurrently -k -n build,api,worker,web -c gray,cyan,yellow,magenta \"tsc -b -w --preserveWatchOutput\" \"npm run dev -w @forgeflow/api\" \"npm run dev:worker -w @forgeflow/api\" \"npm run dev -w @forgeflow/web\"",
     "build": "tsc -b && npm run build -w @forgeflow/web",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json && npm run typecheck -w @forgeflow/web",
     "lint": "eslint .",
@@ -28,6 +28,7 @@
     "db:reset": "npm run reset -w @forgeflow/database",
     "db:seed": "npm run seed -w @forgeflow/database",
     "secrets:rewrap": "npm run secrets:rewrap -w @forgeflow/api",
+    "github:replay": "node scripts/github-webhook-replay.mjs",
     "clean": "rimraf --glob \"apps/*/dist\" \"packages/*/dist\" \"apps/web/.next\""
   },
   "devDependencies": {

@@ -16,12 +16,12 @@ import {
   setCookieLines,
   client,
 } from '../../support/http.js';
-import { createUser, testDatabaseUrl } from '../../support/test-database.js';
+import { createUser, testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 let database: DatabaseHandle;
 
 beforeAll(() => {
-  database = createDatabase(testDatabaseUrl(), { max: 2 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 2 });
 });
 
 afterAll(async () => {

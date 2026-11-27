@@ -22,14 +22,14 @@ import {
   TEST_PASSWORD,
   uniqueEmail,
 } from '../../support/http.js';
-import { testDatabaseUrl } from '../../support/test-database.js';
+import { testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 let database: DatabaseHandle;
 let github: FakeGithub;
 let app: INestApplication;
 
 beforeAll(async () => {
-  database = createDatabase(testDatabaseUrl(), { max: 2 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 2 });
   github = await new FakeGithub().start();
   app = await createApp(
     envFor({

@@ -17,7 +17,7 @@ import {
   client,
 } from '../../support/http.js';
 import { countEmailsTo, linkIn, testSmtpUrl, waitForEmailTo } from '../../support/mailpit.js';
-import { createUser, testDatabaseUrl } from '../../support/test-database.js';
+import { createUser, testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 const RESET_SUBJECT = 'Reset your ForgeFlow password';
 const CHANGED_SUBJECT = 'Your ForgeFlow password was changed';
@@ -28,7 +28,7 @@ let app: INestApplication;
 const http = () => client(app);
 
 beforeAll(async () => {
-  database = createDatabase(testDatabaseUrl(), { max: 2 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 2 });
   app = await createApp(envFor({ SMTP_URL: testSmtpUrl() }));
   await app.init();
 });

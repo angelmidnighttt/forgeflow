@@ -27,7 +27,7 @@ import {
 } from '../../support/http.js';
 import { linkIn, testSmtpUrl, waitForEmailTo } from '../../support/mailpit.js';
 import { addMember, createOrganization, verifiedUser } from '../../support/organizations.js';
-import { testDatabaseUrl } from '../../support/test-database.js';
+import { testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 const SUBJECT = 'invited you to';
 
@@ -35,7 +35,7 @@ let database: DatabaseHandle;
 let app: INestApplication;
 
 beforeAll(async () => {
-  database = createDatabase(testDatabaseUrl(), { max: 2 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 2 });
   app = await createApp(envFor({ SMTP_URL: testSmtpUrl() }));
   await app.init();
 });

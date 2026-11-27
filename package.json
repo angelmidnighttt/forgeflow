@@ -12,7 +12,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "node scripts/ensure-env.mjs && npm run db:up && tsc -b && npm run db:migrate && concurrently -k -n build,api,web -c gray,cyan,magenta \"tsc -b -w --preserveWatchOutput\" \"npm run dev -w @forgeflow/api\" \"npm run dev -w @forgeflow/web\"",
+    "dev": "node scripts/ensure-env.mjs && npm run db:up && npm run db:app-role && tsc -b && npm run db:migrate && concurrently -k -n build,api,web -c gray,cyan,magenta \"tsc -b -w --preserveWatchOutput\" \"npm run dev -w @forgeflow/api\" \"npm run dev -w @forgeflow/web\"",
     "build": "tsc -b && npm run build -w @forgeflow/web",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json && npm run typecheck -w @forgeflow/web",
     "lint": "eslint .",
@@ -22,6 +22,7 @@
     "test:unit": "tsc -b && node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js --selectProjects unit",
     "db:up": "docker compose -f infra/compose/docker-compose.yml up -d --wait",
     "db:down": "docker compose -f infra/compose/docker-compose.yml down",
+    "db:app-role": "docker compose -f infra/compose/docker-compose.yml exec -T postgres psql -U forgeflow -d postgres -v ON_ERROR_STOP=1 -q < infra/compose/postgres/init/01-app-role.sql",
     "db:generate": "npm run generate -w @forgeflow/database",
     "db:migrate": "npm run migrate -w @forgeflow/database",
     "db:reset": "npm run reset -w @forgeflow/database",

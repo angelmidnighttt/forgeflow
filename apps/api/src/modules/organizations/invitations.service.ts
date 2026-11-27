@@ -13,7 +13,7 @@ import {
   type DatabaseHandle,
   type InvitationRow,
 } from '@forgeflow/database';
-import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { WEB_PATHS } from '../../common/constants/auth.constants.js';
 import { API_ENV, CLOCK, DATABASE } from '../../common/constants/injection-tokens.js';
 import { INVITATION_TTL_MS, ROLE_LABELS } from '../../common/constants/organization.constants.js';
@@ -84,7 +84,7 @@ export class InvitationsService {
 
     const now = this.now();
     const secret = generateSecretToken();
-    const row = await this.database.db.transaction(async (tx) => {
+    const row = await this.database.withTenant(tenantOf(actor), async (tx) => {
       await tx
         .update(invitations)
         .set({ revokedAt: now })
@@ -128,10 +128,9 @@ export class InvitationsService {
       });
     } catch (error) {
       this.logger.error({ err: error }, 'Could not send the invitation email');
-      await this.database.db
-        .update(invitations)
-        .set({ revokedAt: this.now() })
-        .where(eq(invitations.id, row.id));
+      await this.database.withTenant(tenantOf(actor), (tx) =>
+        tx.update(invitations).set({ revokedAt: this.now() }).where(eq(invitations.id, row.id)),
+      );
       return { status: 'send_failed' };
     }
 
@@ -143,12 +142,14 @@ export class InvitationsService {
 
   /** Invitations not accepted or revoked yet, newest first (expired ones included). */
   async listPending(organizationId: string): Promise<Invitation[]> {
-    const rows = await this.database.db
-      .select({ invitation: invitations, inviterName: users.name, inviterEmail: users.email })
-      .from(invitations)
-      .leftJoin(users, eq(users.id, invitations.invitedBy))
-      .where(and(eq(invitations.organizationId, organizationId), pending()))
-      .orderBy(desc(invitations.createdAt));
+    const rows = await this.database.withTenant({ organizationId }, (tx) =>
+      tx
+        .select({ invitation: invitations, inviterName: users.name, inviterEmail: users.email })
+        .from(invitations)
+        .leftJoin(users, eq(users.id, invitations.invitedBy))
+        .where(and(eq(invitations.organizationId, organizationId), pending()))
+        .orderBy(desc(invitations.createdAt)),
+    );
     return rows.map((row) =>
       toInvitation(
         row.invitation,
@@ -159,35 +160,40 @@ export class InvitationsService {
 
   /** Withdraws a pending invitation; false when there is none with that id in the organization. */
   async revoke(organizationId: string, invitationId: string): Promise<boolean> {
-    const revoked = await this.database.db
-      .update(invitations)
-      .set({ revokedAt: this.now() })
-      .where(
-        and(
-          eq(invitations.id, invitationId),
-          eq(invitations.organizationId, organizationId),
-          pending(),
-        ),
-      )
-      .returning({ id: invitations.id });
+    const revoked = await this.database.withTenant({ organizationId }, (tx) =>
+      tx
+        .update(invitations)
+        .set({ revokedAt: this.now() })
+        .where(
+          and(
+            eq(invitations.id, invitationId),
+            eq(invitations.organizationId, organizationId),
+            pending(),
+          ),
+        )
+        .returning({ id: invitations.id }),
+    );
     return revoked.length > 0;
   }
 
   /** What the link behind `secret` offers, or undefined when it cannot be used. */
   async preview(secret: string): Promise<InvitationPreview | undefined> {
-    if (!isSecretToken(secret)) return undefined;
-    const [row] = await this.database.db
-      .select({
-        invitation: invitations,
-        organizationName: organizations.name,
-        inviterName: users.name,
-        inviterExists: users.id,
-      })
-      .from(invitations)
-      .innerJoin(organizations, eq(organizations.id, invitations.organizationId))
-      .leftJoin(users, eq(users.id, invitations.invitedBy))
-      .where(and(eq(invitations.tokenHash, hashSecretToken(secret)), usable(this.now())))
-      .limit(1);
+    const organizationId = await this.organizationOfToken(secret);
+    if (!organizationId) return undefined;
+    const [row] = await this.database.withTenant({ organizationId }, (tx) =>
+      tx
+        .select({
+          invitation: invitations,
+          organizationName: organizations.name,
+          inviterName: users.name,
+          inviterExists: users.id,
+        })
+        .from(invitations)
+        .innerJoin(organizations, eq(organizations.id, invitations.organizationId))
+        .leftJoin(users, eq(users.id, invitations.invitedBy))
+        .where(and(eq(invitations.tokenHash, hashSecretToken(secret)), usable(this.now())))
+        .limit(1),
+    );
     if (!row) return undefined;
     return {
       organization: { id: row.invitation.organizationId, name: row.organizationName },
@@ -205,11 +211,13 @@ export class InvitationsService {
    * who is already a member keeps their current role.
    */
   async accept(userId: string, secret: string): Promise<AcceptInvitationOutcome> {
-    if (!isSecretToken(secret)) return { status: 'invalid' };
+    const organizationId = await this.organizationOfToken(secret);
+    if (!organizationId) return { status: 'invalid' };
     const user = await this.users.findById(userId);
     if (!user) return { status: 'invalid' };
 
-    return this.database.db.transaction(async (tx): Promise<AcceptInvitationOutcome> => {
+    const context = { organizationId, userId };
+    return this.database.withTenant(context, async (tx): Promise<AcceptInvitationOutcome> => {
       const now = this.now();
       const [invitation] = await tx
         .select()
@@ -241,6 +249,24 @@ export class InvitationsService {
       return { status: 'accepted', organization: toOrganization(organization, role) };
     });
   }
+
+  /**
+   * The organization of the invitation behind `secret`, if any. This is the "system" path of
+   * ADR-0002: the request has no tenant context yet, so a narrow SECURITY DEFINER function
+   * returns only the organization id; everything else then runs under row-level security.
+   */
+  private async organizationOfToken(secret: string): Promise<string | undefined> {
+    if (!isSecretToken(secret)) return undefined;
+    const result = await this.database.db.execute<{ organization_id: string | null }>(
+      sql`select forgeflow_invitation_organization(${hashSecretToken(secret)}) as organization_id`,
+    );
+    return result.rows[0]?.organization_id ?? undefined;
+  }
+}
+
+/** The tenant context of an action taken by `actor` in their organization. */
+function tenantOf(actor: MembershipContext) {
+  return { organizationId: actor.organizationId, userId: actor.userId };
 }
 
 function toInvitation(

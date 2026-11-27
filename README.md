@@ -22,7 +22,7 @@ npm run dev
 `npm run dev` sẽ:
 
 1. Tạo `.env` từ `.env.example` nếu chưa có (và bổ sung các biến mới thêm vào `.env.example`).
-2. Bật PostgreSQL (pgvector) và Mailpit bằng Docker Compose, chờ healthy.
+2. Bật PostgreSQL (pgvector) và Mailpit bằng Docker Compose, chờ healthy; tạo role `forgeflow_app` mà api dùng để kết nối (`npm run db:app-role`).
 3. Build các package TypeScript, áp dụng migration.
 4. Chạy song song: TypeScript watch, api (tự restart khi code đổi), web.
 
@@ -39,20 +39,21 @@ Nếu cổng đã bị chiếm, đặt cổng khác trước khi chạy và sử
 
 ## Script
 
-| Lệnh                              | Việc làm                                                  |
-| --------------------------------- | --------------------------------------------------------- |
-| `npm run dev`                     | Chạy toàn bộ môi trường local                             |
-| `npm run build`                   | Build packages, api và web                                |
-| `npm run typecheck`               | Kiểm tra kiểu toàn repo, gồm cả code test                 |
-| `npm run lint`                    | ESLint                                                    |
-| `npm run format` / `format:check` | Prettier                                                  |
-| `npm test`                        | Build rồi chạy Jest (unit + integration, cần `db:up`)     |
-| `npm run test:unit`               | Chỉ chạy unit test, không cần dịch vụ ngoài               |
-| `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL và Mailpit local                     |
-| `npm run db:generate`             | Sinh migration từ schema Drizzle (`drizzle-kit generate`) |
-| `npm run db:migrate`              | Áp dụng migration (chạy lặp lại an toàn)                  |
-| `npm run db:reset`                | Xoá sạch và migrate lại — chỉ chạy được với DB localhost  |
-| `npm run db:seed`                 | Nạp dữ liệu mẫu                                           |
+| Lệnh                              | Việc làm                                                       |
+| --------------------------------- | -------------------------------------------------------------- |
+| `npm run dev`                     | Chạy toàn bộ môi trường local                                  |
+| `npm run build`                   | Build packages, api và web                                     |
+| `npm run typecheck`               | Kiểm tra kiểu toàn repo, gồm cả code test                      |
+| `npm run lint`                    | ESLint                                                         |
+| `npm run format` / `format:check` | Prettier                                                       |
+| `npm test`                        | Build rồi chạy Jest (unit + integration, cần `db:up`)          |
+| `npm run test:unit`               | Chỉ chạy unit test, không cần dịch vụ ngoài                    |
+| `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL và Mailpit local                          |
+| `npm run db:app-role`             | Tạo / cập nhật role `forgeflow_app` ở local (chạy lại an toàn) |
+| `npm run db:generate`             | Sinh migration từ schema Drizzle (`drizzle-kit generate`)      |
+| `npm run db:migrate`              | Áp dụng migration (chạy lặp lại an toàn)                       |
+| `npm run db:reset`                | Xoá sạch và migrate lại — chỉ chạy được với DB localhost       |
+| `npm run db:seed`                 | Nạp dữ liệu mẫu                                                |
 
 ## Cấu trúc
 
@@ -124,6 +125,7 @@ Test nằm trong `apps/api/test/` và `apps/web/test/`, cùng cấu trúc với 
 
 - `*.test.ts`: unit test, không cần dịch vụ ngoài.
 - `*.int.test.ts`: integration test, chạy với PostgreSQL và Mailpit thật (`npm run db:up`). Trước mỗi lần chạy, Jest tạo lại một database riêng tên `<tên DB>_test` (hoặc `TEST_DATABASE_URL`) và áp dụng migration; database dev không bị đụng tới. Test email gửi qua Mailpit rồi đọc lại bằng HTTP API của nó, mỗi test dùng một địa chỉ nhận riêng.
+- Integration test dùng hai kết nối như production: api trong test chạy bằng role `forgeflow_app` (chịu RLS, `testDatabaseUrl()`); fixture ghi thẳng vào DB dùng owner (bỏ qua RLS, `testOwnerDatabaseUrl()`).
 
 ## Quy ước API
 
@@ -279,6 +281,22 @@ Mọi thứ ForgeFlow quản lý thuộc về một organization (tenant). Một
 - **Kiểm tra quyền** (`OrgPermissionGuard`, guard toàn cục cho route có `@RequirePermission`): org lấy từ `:orgId` trên URL, vai trò lấy từ bảng `memberships` ở **mỗi request** — không từ token, không từ body. Không phải thành viên (hoặc org không tồn tại, id sai định dạng) → `404` giống nhau; thiếu quyền → `403 ROLE_NOT_ALLOWED`. Bị xoá khỏi org là mất quyền ngay.
 - **Lời mời**: link `<APP_ORIGIN>/invitations/accept#token=…` (token sau `#`, DB chỉ lưu hash), dùng một lần, hết hạn sau 7 ngày. Mỗi email chỉ có một lời mời đang chờ trong một org: mời lại thì link cũ hết hiệu lực. Không gửi được email → `503` và lời mời bị huỷ. Nhận lời mời đánh dấu email đã xác minh (link chứng minh hộp thư); người đã là thành viên giữ nguyên vai trò.
 - Thử bằng REST Client: `apps/api/http/organizations.http`.
+
+## Cơ sở dữ liệu và cách ly tenant (RLS)
+
+Dữ liệu tenant được cách ly hai lớp: tầng app kiểm tra membership (`OrgPermissionGuard`), và PostgreSQL Row-Level Security chặn cả khi một truy vấn quên lọc `organization_id` (thiết kế: ADR-0002 trong `docs/`, chỉ có ở local).
+
+| Role                | Biến môi trường          | Dùng bởi               | Quyền                                                             |
+| ------------------- | ------------------------ | ---------------------- | ----------------------------------------------------------------- |
+| `forgeflow_app`     | `DATABASE_URL`           | api                    | chỉ `SELECT/INSERT/UPDATE/DELETE`; không owner, không `BYPASSRLS` |
+| `forgeflow` (owner) | `MIGRATION_DATABASE_URL` | migrate / reset / seed | sở hữu bảng, bỏ qua RLS                                           |
+
+- api **từ chối khởi động** nếu `DATABASE_URL` là superuser hoặc role có `BYPASSRLS`.
+- Migration cấp quyền cho `forgeflow_app` nhưng không đặt mật khẩu. Ở local, role đăng nhập được tạo bởi `infra/compose/postgres/init/01-app-role.sql` (Postgres chạy khi tạo volume; volume cũ: `npm run db:app-role`); CI chạy cùng file đó; production do hạ tầng tạo (Phase 11).
+- **Truy vấn bảng tenant phải chạy trong `database.withTenant({ organizationId, userId }, (tx) => …)`**: mở transaction và đặt `app.organization_id` / `app.user_id` (chỉ trong transaction). Không có context thì policy không khớp dòng nào.
+- Policy hiện có: `organizations`, `memberships`, `invitations` đọc / ghi theo org trong context; user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
+- Luồng chưa biết org (xem / nhận lời mời theo token) dùng hàm `SECURITY DEFINER` hẹp (`forgeflow_invitation_organization`) chỉ trả org id, rồi chạy phần còn lại trong `withTenant`.
+- **Thêm bảng tenant mới**: cột `organization_id NOT NULL`; trong một migration viết tay (`cd packages/database && npx drizzle-kit generate --custom --name <tên>`): `ENABLE` + `FORCE ROW LEVEL SECURITY` và policy theo `forgeflow_current_organization_id()`; composite FK `(organization_id, …)` tới bảng cha. Test catalog sẽ đỏ nếu quên bật RLS.
 
 ## Docker image
 

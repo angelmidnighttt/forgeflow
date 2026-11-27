@@ -1,18 +1,30 @@
 import { randomUUID } from 'node:crypto';
 import { users, type Database, type NewUser, type User } from '@forgeflow/database';
 
-/**
- * URL of the integration test database. global-setup.ts chooses it, recreates the database,
- * applies migrations and exports it as TEST_DATABASE_URL before any test file runs.
- */
-export function testDatabaseUrl(): string {
-  const url = process.env.TEST_DATABASE_URL;
+function preparedUrl(variable: 'TEST_DATABASE_URL' | 'TEST_MIGRATION_DATABASE_URL'): string {
+  const url = process.env[variable];
   if (!url) {
     throw new Error(
-      'TEST_DATABASE_URL is not set. Run integration tests through Jest (npm test) so global-setup.ts prepares the database.',
+      `${variable} is not set. Run integration tests through Jest (npm test) so global-setup.ts prepares the database.`,
     );
   }
   return url;
+}
+
+/**
+ * The test database as the api sees it: the forgeflow_app role, which row-level security
+ * applies to. Use it for the app under test and for RLS tests.
+ */
+export function testDatabaseUrl(): string {
+  return preparedUrl('TEST_DATABASE_URL');
+}
+
+/**
+ * The test database as its owner, which bypasses row-level security. Use it for fixtures that
+ * write rows directly and for assertions that read them back.
+ */
+export function testOwnerDatabaseUrl(): string {
+  return preparedUrl('TEST_MIGRATION_DATABASE_URL');
 }
 
 /** Inserts a user with a unique email. Tests never share rows, so they can run in parallel. */

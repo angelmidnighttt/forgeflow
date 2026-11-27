@@ -57,6 +57,13 @@
       "when": 1795665607662,
       "tag": "0007_organizations",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795742610541,
+      "tag": "0008_row_level_security",
+      "breakpoints": true
     }
   ]
 }

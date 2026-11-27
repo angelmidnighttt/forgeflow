@@ -39,7 +39,9 @@ jobs:
           - 8025:8025
     env:
       NODE_ENV: test
-      DATABASE_URL: postgres://forgeflow:forgeflow@localhost:5432/forgeflow
+      # The api's role (row-level security applies) and the owner for migrations (ADR-0002).
+      DATABASE_URL: postgres://forgeflow_app:forgeflow_app@localhost:5432/forgeflow
+      MIGRATION_DATABASE_URL: postgres://forgeflow:forgeflow@localhost:5432/forgeflow
       NEXT_TELEMETRY_DISABLED: 1
     steps:
       - uses: actions/checkout@v5
@@ -52,6 +54,8 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run typecheck
+      - name: Create the api's database role
+        run: psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f infra/compose/postgres/init/01-app-role.sql
       - name: Migrations apply cleanly and are idempotent
         run: npm run db:migrate && npm run db:migrate
       - run: npm test

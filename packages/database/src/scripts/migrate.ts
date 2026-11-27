@@ -1,6 +1,6 @@
-import { loadDatabaseEnv } from '../env.js';
+import { loadMigrationEnv } from '../env.js';
 import { migrateDatabase } from '../migrate.js';
 
-const env = loadDatabaseEnv();
-await migrateDatabase(env.DATABASE_URL);
+const env = loadMigrationEnv();
+await migrateDatabase(env.MIGRATION_DATABASE_URL);
 console.log('Migrations applied.');

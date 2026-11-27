@@ -2,19 +2,22 @@ import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { organizationSchema } from '@forgeflow/contracts';
-import { createDatabase, type DatabaseHandle } from '@forgeflow/database';
+import { createDatabase, invitations, type DatabaseHandle } from '@forgeflow/database';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { createApp } from '../../../src/app.factory.js';
 import { bearer, client, envFor, registerUser } from '../../support/http.js';
 import { addMember, createOrganization, verifiedUser } from '../../support/organizations.js';
-import { testDatabaseUrl } from '../../support/test-database.js';
+import { testSmtpUrl } from '../../support/mailpit.js';
+import { testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 let database: DatabaseHandle;
 let app: INestApplication;
 
 beforeAll(async () => {
-  database = createDatabase(testDatabaseUrl(), { max: 2 });
-  app = await createApp(envFor());
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 2 });
+  // Mailpit, so that invitations in the isolation tests can be sent.
+  app = await createApp(envFor({ SMTP_URL: testSmtpUrl() }));
   await app.init();
 });
 
@@ -140,5 +143,61 @@ describe('PATCH /api/v1/organizations/:orgId', () => {
       const res = await rename(user, 'Nope').expect(403);
       expect(res.body.error.code).toBe('ROLE_NOT_ALLOWED');
     }
+  });
+});
+
+describe('isolation between organizations (required test #5)', () => {
+  it("gives a member of A no way to read or change B's data through the API", async () => {
+    const alice = await verifiedUser(app, database);
+    const bob = await verifiedUser(app, database);
+    await createOrganization(app, alice, 'A');
+    const b = await createOrganization(app, bob, 'B');
+    const victim = await registerUser(app);
+    await addMember(database, b.id, victim, 'member');
+    const invited = await client(app)
+      .post(`/api/v1/organizations/${b.id}/invitations`)
+      .set('Authorization', bearer(bob))
+      .send({ email: `${randomUUID()}@example.test`, role: 'member' });
+    expect(invited.status).toBe(201);
+    const invitationId = (invited.body.data as { id: string }).id;
+
+    const base = `/api/v1/organizations/${b.id}`;
+    const member = `${base}/members/${victim.body.user.id}`;
+    const attempts = [
+      client(app).get(base),
+      client(app).patch(base).send({ name: 'Hijacked' }),
+      client(app).get(`${base}/members`),
+      client(app).patch(member).send({ role: 'viewer' }),
+      client(app).delete(member),
+      client(app).get(`${base}/invitations`),
+      client(app).post(`${base}/invitations`).send({ email: 'x@example.test', role: 'member' }),
+      client(app).delete(`${base}/invitations/${invitationId}`),
+    ];
+    for (const attempt of attempts) {
+      const res = await attempt.set('Authorization', bearer(alice));
+      expect([res.status, res.body.error?.code]).toEqual([404, 'NOT_FOUND']);
+    }
+
+    const stillThere = await client(app)
+      .get(`${base}/members`)
+      .set('Authorization', bearer(bob))
+      .expect(200);
+    expect(stillThere.body.data).toHaveLength(2);
+  });
+
+  it('ignores an organizationId in the body: the organization is always the one in the URL', async () => {
+    const owner = await verifiedUser(app, database);
+    const a = await createOrganization(app, owner, 'A');
+    const b = await createOrganization(app, owner, 'B');
+    const email = `${randomUUID()}@example.test`;
+
+    await client(app)
+      .post(`/api/v1/organizations/${a.id}/invitations`)
+      .set('Authorization', bearer(owner))
+      .send({ email, role: 'member', organizationId: b.id })
+      .expect(201);
+
+    const rows = await database.db.select().from(invitations).where(eq(invitations.email, email));
+    expect(rows.map((row) => row.organizationId)).toEqual([a.id]);
   });
 });

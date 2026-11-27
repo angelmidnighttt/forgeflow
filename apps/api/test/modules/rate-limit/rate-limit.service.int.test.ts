@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from '@jest/glo
 import { createDatabase, type DatabaseHandle } from '@forgeflow/database';
 import type { RateLimitRule } from '../../../src/common/types/rate-limit.types.js';
 import { RateLimitService } from '../../../src/modules/rate-limit/rate-limit.service.js';
-import { testDatabaseUrl } from '../../support/test-database.js';
+import { testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 const T0 = new Date('2026-01-01T00:00:00.000Z');
 const RULE: RateLimitRule = { name: 'test', limit: 3, windowMs: 60_000, by: 'custom' };
@@ -13,7 +13,7 @@ let now: Date;
 let service: RateLimitService;
 
 beforeAll(() => {
-  database = createDatabase(testDatabaseUrl(), { max: 8 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 8 });
   service = new RateLimitService(database, () => now);
 });
 

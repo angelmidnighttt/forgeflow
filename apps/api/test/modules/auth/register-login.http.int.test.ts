@@ -15,14 +15,14 @@ import {
   uniqueEmail,
   client,
 } from '../../support/http.js';
-import { createUser, testDatabaseUrl } from '../../support/test-database.js';
+import { createUser, testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 let database: DatabaseHandle;
 let app: INestApplication;
 const http = () => client(app);
 
 beforeAll(async () => {
-  database = createDatabase(testDatabaseUrl(), { max: 2 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 2 });
   app = await createApp(envFor());
   await app.init();
 });

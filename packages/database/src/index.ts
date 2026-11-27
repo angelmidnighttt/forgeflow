@@ -1,10 +1,18 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from './schema/index.js';
+import { tenantContextStatement, type TenantContext } from './tenant.js';
 
-export { databaseEnvSchema, loadDatabaseEnv, type DatabaseEnv } from './env.js';
+export {
+  databaseEnvSchema,
+  loadMigrationEnv,
+  migrationEnvSchema,
+  type DatabaseEnv,
+  type MigrationEnv,
+} from './env.js';
 export { migrateDatabase, migrationsFolder } from './migrate.js';
 export * from './schema/index.js';
+export { roleBypassesRowLevelSecurity, type TenantContext } from './tenant.js';
 
 export type Database = NodePgDatabase<typeof schema>;
 /** The `tx` handed to `db.transaction(async (tx) => …)`. */
@@ -15,6 +23,12 @@ export type DbExecutor = Database | DatabaseTransaction;
 export interface DatabaseHandle {
   db: Database;
   pool: pg.Pool;
+  /**
+   * Runs `work` in a transaction whose row-level security context is `context`. Every query on
+   * a tenant table (organizations, memberships, invitations…) must run inside one: without a
+   * context the policies match no rows.
+   */
+  withTenant<T>(context: TenantContext, work: (tx: DatabaseTransaction) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -45,7 +59,16 @@ export function createDatabase(url: string, options: CreateDatabaseOptions = {})
       ((error) => console.warn(`[database] idle connection error: ${error.message}`)),
   );
   const db = drizzle({ client: pool, schema, casing: 'snake_case' });
-  return { db, pool, close: () => pool.end() };
+  return {
+    db,
+    pool,
+    withTenant: (context, work) =>
+      db.transaction(async (tx) => {
+        await tx.execute(tenantContextStatement(context));
+        return work(tx);
+      }),
+    close: () => pool.end(),
+  };
 }
 
 /** Returns true when the database answers `SELECT 1` within `timeoutMs`. Never throws. */

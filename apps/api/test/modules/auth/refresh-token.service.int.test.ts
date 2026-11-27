@@ -6,7 +6,7 @@ import { TOKEN_POLICY } from '../../../src/common/constants/auth.constants.js';
 import type { IssuedRefreshToken } from '../../../src/common/types/auth.types.js';
 import { hashSecretToken } from '../../../src/common/utils/secret-token.util.js';
 import { RefreshTokenService } from '../../../src/modules/auth/refresh-token.service.js';
-import { createUser, testDatabaseUrl } from '../../support/test-database.js';
+import { createUser, testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const T0 = new Date('2026-01-01T00:00:00.000Z');
@@ -16,7 +16,7 @@ let now: Date;
 let service: RefreshTokenService;
 
 beforeAll(() => {
-  database = createDatabase(testDatabaseUrl(), { max: 4 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 4 });
   service = new RefreshTokenService(database, () => now);
 });
 

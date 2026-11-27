@@ -8,13 +8,13 @@ import { z } from 'zod';
 import { createApp } from '../../../src/app.factory.js';
 import { bearer, client, envFor, registerUser, type SignedIn } from '../../support/http.js';
 import { addMember, createOrganization, verifiedUser } from '../../support/organizations.js';
-import { testDatabaseUrl } from '../../support/test-database.js';
+import { testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 let database: DatabaseHandle;
 let app: INestApplication;
 
 beforeAll(async () => {
-  database = createDatabase(testDatabaseUrl(), { max: 4 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 4 });
   app = await createApp(envFor());
   await app.init();
 });

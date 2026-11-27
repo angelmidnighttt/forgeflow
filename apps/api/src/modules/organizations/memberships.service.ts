@@ -21,7 +21,8 @@ import type {
 } from '../../common/types/organization.types.js';
 
 /**
- * Members of organizations and their roles. Every change runs in a transaction that first
+ * Members of organizations and their roles. Queries run in the organization's tenant context
+ * (row-level security, docs/adr/ADR-0002). Every change runs in a transaction that first
  * locks the organization row, so concurrent changes are serialized and the "at least one
  * owner" rule cannot be broken by two owners demoting each other at the same moment. The
  * actor's own role is read again inside that transaction for the same reason.
@@ -30,24 +31,33 @@ import type {
 export class MembershipsService {
   constructor(@Inject(DATABASE) private readonly database: DatabaseHandle) {}
 
+  /**
+   * The role of `userId` in the organization. Pass `db` to read inside a transaction that
+   * already has the organization's tenant context; otherwise one is opened.
+   */
   async findRole(
     organizationId: string,
     userId: string,
-    db: DbExecutor = this.database.db,
+    db?: DbExecutor,
   ): Promise<OrganizationRole | undefined> {
-    const [row] = await db
-      .select({ role: memberships.role })
-      .from(memberships)
-      .where(and(eq(memberships.organizationId, organizationId), eq(memberships.userId, userId)))
-      .limit(1);
-    return row?.role;
+    const read = async (executor: DbExecutor) => {
+      const [row] = await executor
+        .select({ role: memberships.role })
+        .from(memberships)
+        .where(and(eq(memberships.organizationId, organizationId), eq(memberships.userId, userId)))
+        .limit(1);
+      return row?.role;
+    };
+    return db ? read(db) : this.database.withTenant({ organizationId }, read);
   }
 
   /** Members in the order they joined. */
   async list(organizationId: string): Promise<Member[]> {
-    const rows = await this.memberQuery(this.database.db)
-      .where(eq(memberships.organizationId, organizationId))
-      .orderBy(asc(memberships.createdAt));
+    const rows = await this.database.withTenant({ organizationId }, (tx) =>
+      this.memberQuery(tx)
+        .where(eq(memberships.organizationId, organizationId))
+        .orderBy(asc(memberships.createdAt)),
+    );
     return rows.map(toMember);
   }
 
@@ -56,7 +66,7 @@ export class MembershipsService {
     targetUserId: string,
     role: OrganizationRole,
   ): Promise<ChangeRoleOutcome> {
-    return this.database.db.transaction(async (tx): Promise<ChangeRoleOutcome> => {
+    return this.database.withTenant(tenantOf(actor), async (tx): Promise<ChangeRoleOutcome> => {
       const actorRole = await this.lockAndReadRole(tx, actor);
       if (!actorRole) return { status: 'role_not_allowed' };
       const target = await this.findMember(tx, actor.organizationId, targetUserId);
@@ -86,7 +96,7 @@ export class MembershipsService {
    * removing someone else needs canManageMember.
    */
   async remove(actor: MembershipContext, targetUserId: string): Promise<RemoveMemberOutcome> {
-    return this.database.db.transaction(async (tx): Promise<RemoveMemberOutcome> => {
+    return this.database.withTenant(tenantOf(actor), async (tx): Promise<RemoveMemberOutcome> => {
       const actorRole = await this.lockAndReadRole(tx, actor);
       if (!actorRole) return 'role_not_allowed';
       const target = await this.findMember(tx, actor.organizationId, targetUserId);
@@ -153,6 +163,11 @@ export class MembershipsService {
       .innerJoin(users, eq(users.id, memberships.userId))
       .$dynamic();
   }
+}
+
+/** The tenant context of an action taken by `actor` in their organization. */
+function tenantOf(actor: MembershipContext) {
+  return { organizationId: actor.organizationId, userId: actor.userId };
 }
 
 function toMember(row: {

@@ -40,5 +40,5 @@ COPY --from=build /app/apps/api/dist ./apps/api/dist
 USER node
 EXPOSE 4000
 # Migrations run as a separate step before a new version takes traffic:
-#   docker run --rm -e DATABASE_URL=... forgeflow-api node packages/database/dist/scripts/migrate.js
+#   docker run --rm -e MIGRATION_DATABASE_URL=... forgeflow-api node packages/database/dist/scripts/migrate.js
 CMD ["node", "--enable-source-maps", "apps/api/dist/main.js"]

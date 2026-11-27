@@ -4,13 +4,13 @@ import { createDatabase, refreshTokens, users, type DatabaseHandle } from '@forg
 import { eq } from 'drizzle-orm';
 import { RefreshTokenService } from '../../../src/modules/auth/refresh-token.service.js';
 import { toAuthUser, UsersService } from '../../../src/modules/users/users.service.js';
-import { createUser, pgErrorCode, testDatabaseUrl } from '../../support/test-database.js';
+import { createUser, pgErrorCode, testOwnerDatabaseUrl } from '../../support/test-database.js';
 
 let database: DatabaseHandle;
 let refreshTokenService: RefreshTokenService;
 
 beforeAll(() => {
-  database = createDatabase(testDatabaseUrl(), { max: 2 });
+  database = createDatabase(testOwnerDatabaseUrl(), { max: 2 });
   refreshTokenService = new RefreshTokenService(database, () => new Date());
 });
 

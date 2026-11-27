@@ -18,9 +18,11 @@ import {
   type UpdateMemberRoleRequest,
 } from '@forgeflow/contracts';
 import { z } from 'zod';
+import { CurrentActor } from '../../common/decorators/current-actor.decorator.js';
 import { CurrentMembership } from '../../common/decorators/current-membership.decorator.js';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
 import type { MembershipContext } from '../../common/types/organization.types.js';
 import { roleNotAllowed } from '../../common/utils/organization-errors.util.js';
 import { MembershipsService } from './memberships.service.js';
@@ -51,10 +53,11 @@ export class MembersController {
   @RequirePermission('members.manage')
   async changeRole(
     @CurrentMembership() membership: MembershipContext,
+    @CurrentActor() actor: AuditActor,
     @Param('userId', new ZodValidationPipe(z.uuid())) userId: string,
     @Body(new ZodValidationPipe(updateMemberRoleRequestSchema)) body: UpdateMemberRoleRequest,
   ): Promise<Member> {
-    const outcome = await this.memberships.changeRole(membership, userId, body.role);
+    const outcome = await this.memberships.changeRole(membership, userId, body.role, actor);
     switch (outcome.status) {
       case 'changed':
         return outcome.member;
@@ -76,9 +79,10 @@ export class MembersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
     @CurrentMembership() membership: MembershipContext,
+    @CurrentActor() actor: AuditActor,
     @Param('userId', new ZodValidationPipe(z.uuid())) userId: string,
   ): Promise<void> {
-    const outcome = await this.memberships.remove(membership, userId);
+    const outcome = await this.memberships.remove(membership, userId, actor);
     switch (outcome) {
       case 'removed':
         return;

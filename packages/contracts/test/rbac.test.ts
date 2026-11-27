@@ -19,6 +19,7 @@ const EXPECTED: Record<Permission, Record<OrganizationRole, boolean>> = {
   'projects.read': { owner: true, admin: true, member: true, viewer: true },
   'projects.manage': { owner: true, admin: true, member: false, viewer: false },
   'environments.protect': { owner: true, admin: true, member: false, viewer: false },
+  'audit.read': { owner: true, admin: true, member: false, viewer: false },
 };
 
 describe('can (role × permission)', () => {

@@ -18,6 +18,7 @@ import { WEB_PATHS } from '../../common/constants/auth.constants.js';
 import { API_ENV, CLOCK, DATABASE } from '../../common/constants/injection-tokens.js';
 import { INVITATION_TTL_MS, ROLE_LABELS } from '../../common/constants/organization.constants.js';
 import { invitationTemplate } from '../../common/templates/invitation.template.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
 import type { Clock } from '../../common/types/clock.types.js';
 import type {
   AcceptInvitationOutcome,
@@ -31,6 +32,7 @@ import {
 } from '../../common/utils/secret-token.util.js';
 import { webLink } from '../../common/utils/web-link.util.js';
 import type { ApiEnv } from '../../config/env.js';
+import { AuditService } from '../audit/audit.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { UsersService } from '../users/users.service.js';
 import { MembershipsService } from './memberships.service.js';
@@ -64,6 +66,7 @@ export class InvitationsService {
     @Inject(MembershipsService) private readonly memberships: MembershipsService,
     @Inject(OrganizationsService) private readonly organizations: OrganizationsService,
     @Inject(MailService) private readonly mail: MailService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   /**
@@ -74,6 +77,7 @@ export class InvitationsService {
   async create(
     actor: MembershipContext,
     input: CreateInvitationRequest,
+    by: AuditActor,
   ): Promise<CreateInvitationOutcome> {
     if (!canAssignRole(actor.role, input.role)) return { status: 'role_not_allowed' };
     const email = input.email.toLowerCase();
@@ -108,6 +112,13 @@ export class InvitationsService {
         })
         .returning();
       if (!created) throw new Error('Invitation insert returned no row');
+      await this.audit.record(tx, {
+        organizationId: actor.organizationId,
+        actor: by,
+        action: 'invitation.created',
+        target: { type: 'invitation', id: created.id },
+        metadata: { email, role: input.role },
+      });
       return created;
     });
 
@@ -128,9 +139,19 @@ export class InvitationsService {
       });
     } catch (error) {
       this.logger.error({ err: error }, 'Could not send the invitation email');
-      await this.database.withTenant(tenantOf(actor), (tx) =>
-        tx.update(invitations).set({ revokedAt: this.now() }).where(eq(invitations.id, row.id)),
-      );
+      await this.database.withTenant(tenantOf(actor), async (tx) => {
+        await tx
+          .update(invitations)
+          .set({ revokedAt: this.now() })
+          .where(eq(invitations.id, row.id));
+        await this.audit.record(tx, {
+          organizationId: actor.organizationId,
+          actor: by,
+          action: 'invitation.revoked',
+          target: { type: 'invitation', id: row.id },
+          metadata: { email, role: input.role, reason: 'email_not_sent' },
+        });
+      });
       return { status: 'send_failed' };
     }
 
@@ -159,9 +180,9 @@ export class InvitationsService {
   }
 
   /** Withdraws a pending invitation; false when there is none with that id in the organization. */
-  async revoke(organizationId: string, invitationId: string): Promise<boolean> {
-    const revoked = await this.database.withTenant({ organizationId }, (tx) =>
-      tx
+  async revoke(organizationId: string, invitationId: string, by: AuditActor): Promise<boolean> {
+    return this.database.withTenant({ organizationId }, async (tx) => {
+      const [revoked] = await tx
         .update(invitations)
         .set({ revokedAt: this.now() })
         .where(
@@ -171,9 +192,17 @@ export class InvitationsService {
             pending(),
           ),
         )
-        .returning({ id: invitations.id }),
-    );
-    return revoked.length > 0;
+        .returning({ id: invitations.id, email: invitations.email, role: invitations.role });
+      if (!revoked) return false;
+      await this.audit.record(tx, {
+        organizationId,
+        actor: by,
+        action: 'invitation.revoked',
+        target: { type: 'invitation', id: revoked.id },
+        metadata: { email: revoked.email, role: revoked.role },
+      });
+      return true;
+    });
   }
 
   /** What the link behind `secret` offers, or undefined when it cannot be used. */
@@ -210,7 +239,8 @@ export class InvitationsService {
    * Following the emailed link also proves the inbox, so the email counts as verified. A user
    * who is already a member keeps their current role.
    */
-  async accept(userId: string, secret: string): Promise<AcceptInvitationOutcome> {
+  async accept(by: AuditActor, secret: string): Promise<AcceptInvitationOutcome> {
+    const userId = by.userId;
     const organizationId = await this.organizationOfToken(secret);
     if (!organizationId) return { status: 'invalid' };
     const user = await this.users.findById(userId);
@@ -230,14 +260,27 @@ export class InvitationsService {
         return { status: 'email_mismatch', invitedEmail: invitation.email };
       }
 
-      await tx
+      const joined = await tx
         .insert(memberships)
         .values({ organizationId: invitation.organizationId, userId, role: invitation.role })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ id: memberships.id });
       await tx
         .update(invitations)
         .set({ acceptedAt: now, acceptedBy: userId })
         .where(eq(invitations.id, invitation.id));
+      await this.audit.record(tx, {
+        organizationId: invitation.organizationId,
+        actor: by,
+        action: 'invitation.accepted',
+        target: { type: 'invitation', id: invitation.id },
+        metadata: {
+          email: invitation.email,
+          role: invitation.role,
+          // Already a member: they keep their role; the invitation is used up all the same.
+          alreadyMember: joined.length === 0,
+        },
+      });
       await this.users.markEmailVerified(userId, now, tx);
 
       const role = await this.memberships.findRole(invitation.organizationId, userId, tx);

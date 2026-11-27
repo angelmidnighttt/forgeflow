@@ -13,6 +13,7 @@ import { systemClock } from './common/utils/clock.util.js';
 import { resolveRequestId } from './common/utils/request-id.util.js';
 import type { ApiEnv } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
+import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
@@ -52,6 +53,7 @@ export class AppModule {
         AuthModule,
         OrganizationsModule,
         ProjectsModule,
+        AuditModule,
         HealthModule,
         ...extraImports,
       ],

@@ -8,9 +8,11 @@ import {
   type UpdateEnvironmentRequest,
 } from '@forgeflow/contracts';
 import { z } from 'zod';
+import { CurrentActor } from '../../common/decorators/current-actor.decorator.js';
 import { CurrentMembership } from '../../common/decorators/current-membership.decorator.js';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
 import type { MembershipContext } from '../../common/types/organization.types.js';
 import { roleNotAllowed } from '../../common/utils/organization-errors.util.js';
 import {
@@ -42,11 +44,17 @@ export class EnvironmentsController {
   @HttpCode(HttpStatus.CREATED)
   async create(
     @CurrentMembership() membership: MembershipContext,
+    @CurrentActor() actor: AuditActor,
     @Param('projectId', new ZodValidationPipe(z.uuid())) projectId: string,
     @Body(new ZodValidationPipe(createEnvironmentRequestSchema)) body: CreateEnvironmentRequest,
   ): Promise<Environment> {
     if (body.protected) assertMayProtect(membership);
-    const outcome = await this.environments.create(membership.organizationId, projectId, body);
+    const outcome = await this.environments.create(
+      membership.organizationId,
+      projectId,
+      body,
+      actor,
+    );
     switch (outcome.status) {
       case 'created':
         return outcome.environment;
@@ -62,6 +70,7 @@ export class EnvironmentsController {
   @RequirePermission('projects.manage')
   async update(
     @CurrentMembership() membership: MembershipContext,
+    @CurrentActor() actor: AuditActor,
     @Param('projectId', new ZodValidationPipe(z.uuid())) projectId: string,
     @Param('environmentId', new ZodValidationPipe(z.uuid())) environmentId: string,
     @Body(new ZodValidationPipe(updateEnvironmentRequestSchema)) body: UpdateEnvironmentRequest,
@@ -72,6 +81,7 @@ export class EnvironmentsController {
       projectId,
       environmentId,
       body,
+      actor,
     );
     switch (outcome.status) {
       case 'updated':

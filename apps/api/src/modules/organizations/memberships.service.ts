@@ -14,11 +14,13 @@ import {
 } from '@forgeflow/database';
 import { and, asc, count, eq } from 'drizzle-orm';
 import { DATABASE } from '../../common/constants/injection-tokens.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
 import type {
   ChangeRoleOutcome,
   MembershipContext,
   RemoveMemberOutcome,
 } from '../../common/types/organization.types.js';
+import { AuditService } from '../audit/audit.service.js';
 
 /**
  * Members of organizations and their roles. Queries run in the organization's tenant context
@@ -29,7 +31,10 @@ import type {
  */
 @Injectable()
 export class MembershipsService {
-  constructor(@Inject(DATABASE) private readonly database: DatabaseHandle) {}
+  constructor(
+    @Inject(DATABASE) private readonly database: DatabaseHandle,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
 
   /**
    * The role of `userId` in the organization. Pass `db` to read inside a transaction that
@@ -65,6 +70,7 @@ export class MembershipsService {
     actor: MembershipContext,
     targetUserId: string,
     role: OrganizationRole,
+    by: AuditActor,
   ): Promise<ChangeRoleOutcome> {
     return this.database.withTenant(tenantOf(actor), async (tx): Promise<ChangeRoleOutcome> => {
       const actorRole = await this.lockAndReadRole(tx, actor);
@@ -87,6 +93,15 @@ export class MembershipsService {
             eq(memberships.userId, targetUserId),
           ),
         );
+      if (target.role !== role) {
+        await this.audit.record(tx, {
+          organizationId: actor.organizationId,
+          actor: by,
+          action: 'member.role_changed',
+          target: { type: 'user', id: targetUserId },
+          metadata: { email: target.email, name: target.name, from: target.role, to: role },
+        });
+      }
       return { status: 'changed', member: { ...target, role } };
     });
   }
@@ -95,7 +110,11 @@ export class MembershipsService {
    * Removes `targetUserId` from the organization. Any member may remove themselves (leave);
    * removing someone else needs canManageMember.
    */
-  async remove(actor: MembershipContext, targetUserId: string): Promise<RemoveMemberOutcome> {
+  async remove(
+    actor: MembershipContext,
+    targetUserId: string,
+    by: AuditActor,
+  ): Promise<RemoveMemberOutcome> {
     return this.database.withTenant(tenantOf(actor), async (tx): Promise<RemoveMemberOutcome> => {
       const actorRole = await this.lockAndReadRole(tx, actor);
       if (!actorRole) return 'role_not_allowed';
@@ -114,6 +133,13 @@ export class MembershipsService {
             eq(memberships.userId, targetUserId),
           ),
         );
+      await this.audit.record(tx, {
+        organizationId: actor.organizationId,
+        actor: by,
+        action: leaving ? 'member.left' : 'member.removed',
+        target: { type: 'user', id: targetUserId },
+        metadata: { email: target.email, name: target.name, role: target.role },
+      });
       return 'removed';
     });
   }

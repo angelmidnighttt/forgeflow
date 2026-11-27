@@ -114,3 +114,15 @@ Content-Type: application/json
 {
   "token": "{{inviteToken}}"
 }
+
+
+### ───────────────────────── Nhật ký hoạt động ─────────────────────────
+
+### Nhật ký của org, mới nhất trước (owner / admin; member, viewer → 403)
+# @name audit
+GET {{baseUrl}}/organizations/{{orgId}}/audit-logs?limit=20
+Authorization: Bearer {{accessToken}}
+
+### Trang tiếp theo (cũ hơn): cursor lấy từ nextCursor của request trên (null là hết)
+GET {{baseUrl}}/organizations/{{orgId}}/audit-logs?limit=20&cursor={{audit.response.body.$.data.nextCursor}}
+Authorization: Bearer {{accessToken}}

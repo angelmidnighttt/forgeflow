@@ -9,23 +9,37 @@ import {
 } from '@forgeflow/database';
 import { asc, eq } from 'drizzle-orm';
 import { DATABASE } from '../../common/constants/injection-tokens.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
+import { AuditService } from '../audit/audit.service.js';
 
 /** Organizations. Every query runs in a tenant context (row-level security, ADR-0002). */
 @Injectable()
 export class OrganizationsService {
-  constructor(@Inject(DATABASE) private readonly database: DatabaseHandle) {}
+  constructor(
+    @Inject(DATABASE) private readonly database: DatabaseHandle,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
 
   /**
-   * Creates an organization with `ownerId` as its first owner, in one transaction. The id is
+   * Creates an organization with `actor` as its first owner, in one transaction. The id is
    * made here so that it can be the tenant context of the insert: row-level security only lets
    * `INSERT … RETURNING` see the row of the organization in the context.
    */
-  async create(ownerId: string, name: string): Promise<Organization> {
+  async create(actor: AuditActor, name: string): Promise<Organization> {
     const id = randomUUID();
-    return this.database.withTenant({ organizationId: id, userId: ownerId }, async (tx) => {
+    return this.database.withTenant({ organizationId: id, userId: actor.userId }, async (tx) => {
       const [organization] = await tx.insert(organizations).values({ id, name }).returning();
       if (!organization) throw new Error('Organization insert returned no row');
-      await tx.insert(memberships).values({ organizationId: id, userId: ownerId, role: 'owner' });
+      await tx
+        .insert(memberships)
+        .values({ organizationId: id, userId: actor.userId, role: 'owner' });
+      await this.audit.record(tx, {
+        organizationId: id,
+        actor,
+        action: 'organization.created',
+        target: { type: 'organization', id },
+        metadata: { name },
+      });
       return toOrganization(organization, 'owner');
     });
   }
@@ -59,15 +73,32 @@ export class OrganizationsService {
     organizationId: string,
     role: OrganizationRole,
     name: string,
+    actor: AuditActor,
   ): Promise<Organization | undefined> {
-    const [organization] = await this.database.withTenant({ organizationId }, (tx) =>
-      tx
+    return this.database.withTenant({ organizationId }, async (tx) => {
+      const [before] = await tx
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for('update');
+      if (!before) return undefined;
+      const [organization] = await tx
         .update(organizations)
         .set({ name })
         .where(eq(organizations.id, organizationId))
-        .returning(),
-    );
-    return organization ? toOrganization(organization, role) : undefined;
+        .returning();
+      if (!organization) return undefined;
+      if (before.name !== name) {
+        await this.audit.record(tx, {
+          organizationId,
+          actor,
+          action: 'organization.renamed',
+          target: { type: 'organization', id: organizationId },
+          metadata: { from: before.name, to: name },
+        });
+      }
+      return toOrganization(organization, role);
+    });
   }
 
   async nameOf(organizationId: string): Promise<string | undefined> {

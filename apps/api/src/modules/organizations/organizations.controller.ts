@@ -6,10 +6,12 @@ import {
   type Organization,
   type UpdateOrganizationRequest,
 } from '@forgeflow/contracts';
+import { CurrentActor } from '../../common/decorators/current-actor.decorator.js';
 import { CurrentAuth } from '../../common/decorators/current-auth.decorator.js';
 import { CurrentMembership } from '../../common/decorators/current-membership.decorator.js';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
 import type { AuthContext } from '../../common/types/auth.types.js';
 import type { MembershipContext } from '../../common/types/organization.types.js';
 import { signInRequired } from '../../common/utils/auth-errors.util.js';
@@ -31,13 +33,13 @@ export class OrganizationsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(
-    @CurrentAuth() auth: AuthContext,
+    @CurrentActor() actor: AuditActor,
     @Body(new ZodValidationPipe(createOrganizationRequestSchema)) body: CreateOrganizationRequest,
   ): Promise<Organization> {
-    const user = await this.users.findById(auth.userId);
+    const user = await this.users.findById(actor.userId);
     if (!user) throw signInRequired();
     if (!user.emailVerifiedAt) throw emailNotVerified();
-    return this.organizations.create(user.id, body.name);
+    return this.organizations.create(actor, body.name);
   }
 
   /** The organizations the caller belongs to, with their role in each. */
@@ -58,12 +60,14 @@ export class OrganizationsController {
   @RequirePermission('organization.update')
   async update(
     @CurrentMembership() membership: MembershipContext,
+    @CurrentActor() actor: AuditActor,
     @Body(new ZodValidationPipe(updateOrganizationRequestSchema)) body: UpdateOrganizationRequest,
   ): Promise<Organization> {
     const organization = await this.organizations.rename(
       membership.organizationId,
       membership.role,
       body.name,
+      actor,
     );
     if (!organization) throw organizationNotFound();
     return organization;

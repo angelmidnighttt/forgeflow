@@ -34,6 +34,8 @@ export const PERMISSIONS = {
    * decides who must approve changes to production (Phase 6).
    */
   'environments.protect': MANAGERS,
+  /** The organization's audit trail. */
+  'audit.read': MANAGERS,
 } as const satisfies Record<string, readonly OrganizationRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

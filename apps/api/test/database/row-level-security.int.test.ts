@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import {
+  auditLogs,
   createDatabase,
   environments,
   invitations,
@@ -328,5 +329,56 @@ describe('projects and environments', () => {
       .where(eq(environments.projectId, projectB))
       .catch((e: unknown) => e);
     expect(pgErrorCode(moved)).toBe('23503');
+  });
+});
+
+describe('the audit trail', () => {
+  const entry = (organizationId: string) => ({
+    organizationId,
+    actorType: 'user' as const,
+    actorUserId: alice.id,
+    action: 'organization.renamed',
+    metadata: { from: 'x', to: 'y' },
+  });
+
+  it("is added to and read only in its organization's context", async () => {
+    await app.withTenant({ organizationId: orgA }, (tx) =>
+      tx.insert(auditLogs).values(entry(orgA)),
+    );
+
+    const elsewhere = await app
+      .withTenant({ organizationId: orgA }, (tx) => tx.insert(auditLogs).values(entry(orgB)))
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(elsewhere)).toBe('42501');
+
+    expect(await app.db.select().from(auditLogs)).toEqual([]);
+    const inB = await app.withTenant({ organizationId: orgB }, (tx) =>
+      tx.select().from(auditLogs).where(eq(auditLogs.organizationId, orgA)),
+    );
+    expect(inB).toEqual([]);
+    const inA = await app.withTenant({ organizationId: orgA }, (tx) => tx.select().from(auditLogs));
+    expect(inA.length).toBeGreaterThan(0);
+    expect(inA.every((row) => row.organizationId === orgA)).toBe(true);
+  });
+
+  it('cannot be changed or deleted by the api, even in its own organization', async () => {
+    await app.withTenant({ organizationId: orgA }, (tx) =>
+      tx.insert(auditLogs).values(entry(orgA)),
+    );
+    const update = await app
+      .withTenant({ organizationId: orgA }, (tx) =>
+        tx.update(auditLogs).set({ action: 'forged' }).where(eq(auditLogs.organizationId, orgA)),
+      )
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(update)).toBe('42501');
+    const remove = await app
+      .withTenant({ organizationId: orgA }, (tx) =>
+        tx.delete(auditLogs).where(eq(auditLogs.organizationId, orgA)),
+      )
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(remove)).toBe('42501');
+
+    const rows = await owner.db.select().from(auditLogs).where(eq(auditLogs.organizationId, orgA));
+    expect(rows.every((row) => row.action === 'organization.renamed')).toBe(true);
   });
 });

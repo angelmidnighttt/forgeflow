@@ -1,4 +1,5 @@
 import {
+  auditLogPageSchema,
   invitationPreviewSchema,
   invitationSchema,
   memberSchema,
@@ -58,6 +59,14 @@ export const organizationsApi = {
       method: 'DELETE',
       accessToken: token,
     }),
+
+  /** One page of the audit trail, newest first; pass the previous page's `nextCursor` for more. */
+  auditLog: (token: string, orgId: string, cursor?: string) =>
+    apiData(
+      `${orgPath(orgId)}/audit-logs${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+      auditLogPageSchema,
+      { accessToken: token },
+    ),
 
   /** What an invitation link offers; no sign-in needed. */
   lookupInvitation: (token: string) =>

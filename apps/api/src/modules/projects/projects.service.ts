@@ -10,11 +10,13 @@ import {
 } from '@forgeflow/database';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { DATABASE } from '../../common/constants/injection-tokens.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
 import type {
   CreateProjectOutcome,
   RenameProjectOutcome,
 } from '../../common/types/project.types.js';
 import { isUniqueViolation } from '../../common/utils/pg-error.util.js';
+import { AuditService } from '../audit/audit.service.js';
 
 /**
  * Projects of an organization, each with its environments. Every query runs in the
@@ -23,10 +25,17 @@ import { isUniqueViolation } from '../../common/utils/pg-error.util.js';
  */
 @Injectable()
 export class ProjectsService {
-  constructor(@Inject(DATABASE) private readonly database: DatabaseHandle) {}
+  constructor(
+    @Inject(DATABASE) private readonly database: DatabaseHandle,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
 
   /** Creates a project with the default environments (DEFAULT_ENVIRONMENTS), in one transaction. */
-  async create(organizationId: string, name: string): Promise<CreateProjectOutcome> {
+  async create(
+    organizationId: string,
+    name: string,
+    actor: AuditActor,
+  ): Promise<CreateProjectOutcome> {
     try {
       return await this.database.withTenant({ organizationId }, async (tx) => {
         const [project] = await tx.insert(projects).values({ organizationId, name }).returning();
@@ -43,6 +52,13 @@ export class ProjectsService {
             })),
           )
           .returning();
+        await this.audit.record(tx, {
+          organizationId,
+          actor,
+          action: 'project.created',
+          target: { type: 'project', id: project.id },
+          metadata: { name },
+        });
         return { status: 'created', project: toProject(project, created) };
       });
     } catch (error) {
@@ -86,15 +102,31 @@ export class ProjectsService {
     organizationId: string,
     projectId: string,
     name: string,
+    actor: AuditActor,
   ): Promise<RenameProjectOutcome> {
     try {
       return await this.database.withTenant({ organizationId }, async (tx) => {
+        const [before] = await tx
+          .select({ name: projects.name })
+          .from(projects)
+          .where(and(eq(projects.organizationId, organizationId), eq(projects.id, projectId)))
+          .for('update');
+        if (!before) return { status: 'not_found' };
         const [row] = await tx
           .update(projects)
           .set({ name })
           .where(and(eq(projects.organizationId, organizationId), eq(projects.id, projectId)))
           .returning();
         if (!row) return { status: 'not_found' };
+        if (before.name !== name) {
+          await this.audit.record(tx, {
+            organizationId,
+            actor,
+            action: 'project.renamed',
+            target: { type: 'project', id: projectId },
+            metadata: { from: before.name, to: name },
+          });
+        }
         const byProject = await this.environmentsOf(tx, organizationId, [row.id]);
         return { status: 'renamed', project: toProject(row, byProject.get(row.id) ?? []) };
       });

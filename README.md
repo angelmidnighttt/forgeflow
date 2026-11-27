@@ -278,6 +278,7 @@ Mọi thứ ForgeFlow quản lý thuộc về một organization (tenant). Một
 | `projects.read`        | ✓     | ✓     | ✓      | ✓      |
 | `projects.manage`      | ✓     | ✓     |        |        |
 | `environments.protect` | ✓     | ✓     |        |        |
+| `audit.read`           | ✓     | ✓     |        |        |
 
 - **Thứ bậc**: owner đổi vai trò / xoá / mời được mọi vai trò (kể cả owner khác). Admin chỉ quản lý và chỉ cấp được `member`, `viewer` — không đụng được admin khác hay owner. Ai cũng tự rời org được.
 - **Luôn còn ít nhất 1 owner**: hạ quyền hay xoá owner cuối cùng → `409 LAST_OWNER`. Mỗi thay đổi khoá dòng org (`SELECT … FOR UPDATE`) và đọc lại vai trò người thực hiện trong transaction, nên hai owner hạ quyền nhau cùng lúc cũng không làm org mất owner.
@@ -301,8 +302,25 @@ Project là một ứng dụng / dịch vụ mà org vận hành; environment l�
 - **Protected**: environment được bảo vệ sẽ cần duyệt trước khi ForgeFlow thay đổi nó (Phase 6). `production` được bảo vệ ngay khi tạo project. Bật / tắt `protected` (kể cả khi thêm environment với `"protected": true`) cần thêm quyền `environments.protect`.
 - **Tên** không trùng (không phân biệt hoa thường): project trong cùng org, environment trong cùng project. Trùng → `409 NAME_TAKEN` kèm `details.field = "name"`.
 - **Thứ tự environment**: theo cột `position` (development → staging → production → các environment thêm sau). Thêm environment khoá dòng project trong transaction, nên thêm đồng thời vẫn không trùng vị trí.
-- Chưa có xoá project / environment: sẽ làm cùng audit log.
+- Chưa có xoá project / environment.
 - Thử bằng REST Client: `apps/api/http/projects.http`.
+
+## Nhật ký hoạt động (audit log)
+
+Mỗi thao tác nhạy cảm trong một org được ghi vào bảng `audit_logs` **trong cùng transaction** với chính thao tác đó: không thể có thay đổi mà thiếu nhật ký, hay nhật ký mà thay đổi không xảy ra. Ghi nhật ký lỗi thì thao tác bị huỷ theo (`500`).
+
+| Hành động                                                                 | Khi nào                                                |
+| ------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `organization.created`, `organization.renamed`                            | Tạo org; đổi tên (chỉ khi tên thật sự đổi)             |
+| `member.role_changed`, `member.removed`, `member.left`                    | Đổi vai trò (khi khác vai trò cũ); xoá người khác; rời |
+| `invitation.created`, `invitation.revoked`, `invitation.accepted`         | Mời; thu hồi (kể cả khi gửi email lỗi); nhận lời mời   |
+| `project.created`, `project.renamed`                                      | Tạo, đổi tên project                                   |
+| `environment.created`, `environment.renamed`, `environment.(un)protected` | Thêm, đổi tên, bật / tắt bảo vệ environment            |
+
+- Mỗi entry có: người thực hiện (`actor_user_id`, hoặc `system` cho worker sau này), đối tượng (`target_type` + `target_id`), chi tiết đủ để đọc lại sau (`metadata`: tên, email, vai trò trước / sau — **không bao giờ có secret**), IP client và `X-Request-Id` của request (để tìm log).
+- **Chỉ thêm, không sửa / xoá**: role `forgeflow_app` có `INSERT` và `SELECT` trên `audit_logs`, không có `UPDATE` / `DELETE` (migration 0012), cộng RLS theo org như mọi bảng tenant.
+- Ghi từ code: `AuditService.record(tx, entry)` với `tx` là transaction của thao tác; người thực hiện lấy bằng `@CurrentActor()` trong controller.
+- `GET /api/v1/organizations/:orgId/audit-logs?limit=50&cursor=…` (quyền `audit.read`: owner, admin): mới nhất trước, phân trang bằng `nextCursor` (theo vị trí `created_at, id`, nên thêm entry mới không làm lệch trang). Web: trang **Nhật ký** (`/orgs/[orgId]/audit`).
 
 ## Cơ sở dữ liệu và cách ly tenant (RLS)
 
@@ -316,7 +334,7 @@ Dữ liệu tenant được cách ly hai lớp: tầng app kiểm tra membership
 - api **từ chối khởi động** nếu `DATABASE_URL` là superuser hoặc role có `BYPASSRLS`.
 - Migration cấp quyền cho `forgeflow_app` nhưng không đặt mật khẩu. Ở local, role đăng nhập được tạo bởi `infra/compose/postgres/init/01-app-role.sql` (Postgres chạy khi tạo volume; volume cũ: `npm run db:app-role`); CI chạy cùng file đó; trên server (`infra/staging`), mỗi lần deploy chạy lại file này với mật khẩu lấy từ `APP_DB_PASSWORD` (biến `FORGEFLOW_APP_DB_PASSWORD` của psql; không đặt thì mặc định là `forgeflow_app`).
 - **Truy vấn bảng tenant phải chạy trong `database.withTenant({ organizationId, userId }, (tx) => …)`**: mở transaction và đặt `app.organization_id` / `app.user_id` (chỉ trong transaction). Không có context thì policy không khớp dòng nào.
-- Policy hiện có: `organizations`, `memberships`, `invitations`, `projects`, `environments` đọc / ghi theo org trong context; user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
+- Policy hiện có: `organizations`, `memberships`, `invitations`, `projects`, `environments` đọc / ghi theo org trong context (`audit_logs`: chỉ đọc và thêm); user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
 - Luồng chưa biết org (xem / nhận lời mời theo token) dùng hàm `SECURITY DEFINER` hẹp (`forgeflow_invitation_organization`) chỉ trả org id, rồi chạy phần còn lại trong `withTenant`.
 - **Thêm bảng tenant mới**: cột `organization_id NOT NULL`; trong một migration viết tay (`cd packages/database && npx drizzle-kit generate --custom --name <tên>`): `ENABLE` + `FORCE ROW LEVEL SECURITY` và policy theo `forgeflow_current_organization_id()`; composite FK `(organization_id, …)` tới bảng cha (bảng cha có `UNIQUE (organization_id, id)`; ví dụ `environments` → `projects`). Test catalog sẽ đỏ nếu quên bật RLS.
 

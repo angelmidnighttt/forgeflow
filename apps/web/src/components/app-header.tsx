@@ -1,5 +1,6 @@
 'use client';
 
+import { can } from '@forgeflow/contracts';
 import { LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -25,6 +26,9 @@ export function AppHeader() {
       ? [
           { href: `/orgs/${organization.id}`, label: 'Tổng quan' },
           { href: `/orgs/${organization.id}/members`, label: 'Thành viên' },
+          ...(can(organization.role, 'audit.read')
+            ? [{ href: `/orgs/${organization.id}/audit`, label: 'Nhật ký' }]
+            : []),
           { href: `/orgs/${organization.id}/settings`, label: 'Cài đặt' },
         ]
       : []),

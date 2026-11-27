@@ -20,10 +20,12 @@ import {
 } from '@forgeflow/contracts';
 import { z } from 'zod';
 import { RATE_LIMITS } from '../../common/constants/rate-limit.constants.js';
+import { CurrentActor } from '../../common/decorators/current-actor.decorator.js';
 import { CurrentMembership } from '../../common/decorators/current-membership.decorator.js';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator.js';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
 import type { MembershipContext } from '../../common/types/organization.types.js';
 import { signInRequired } from '../../common/utils/auth-errors.util.js';
 import { emailNotVerified, roleNotAllowed } from '../../common/utils/organization-errors.util.js';
@@ -45,13 +47,14 @@ export class InvitationsController {
   @HttpCode(HttpStatus.CREATED)
   async create(
     @CurrentMembership() membership: MembershipContext,
+    @CurrentActor() actor: AuditActor,
     @Body(new ZodValidationPipe(createInvitationRequestSchema)) body: CreateInvitationRequest,
   ): Promise<Invitation> {
     const inviter = await this.users.findById(membership.userId);
     if (!inviter) throw signInRequired();
     if (!inviter.emailVerifiedAt) throw emailNotVerified();
 
-    const outcome = await this.invitations.create(membership, body);
+    const outcome = await this.invitations.create(membership, body, actor);
     switch (outcome.status) {
       case 'created':
         return outcome.invitation;
@@ -82,9 +85,10 @@ export class InvitationsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async revoke(
     @CurrentMembership() membership: MembershipContext,
+    @CurrentActor() actor: AuditActor,
     @Param('invitationId', new ZodValidationPipe(z.uuid())) invitationId: string,
   ): Promise<void> {
-    if (!(await this.invitations.revoke(membership.organizationId, invitationId))) {
+    if (!(await this.invitations.revoke(membership.organizationId, invitationId, actor))) {
       throw new NotFoundException({ code: ErrorCode.NotFound, message: 'No such invitation.' });
     }
   }

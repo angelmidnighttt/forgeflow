@@ -15,11 +15,11 @@ import {
   type Organization,
 } from '@forgeflow/contracts';
 import { RATE_LIMITS } from '../../common/constants/rate-limit.constants.js';
-import { CurrentAuth } from '../../common/decorators/current-auth.decorator.js';
+import { CurrentActor } from '../../common/decorators/current-actor.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
-import type { AuthContext } from '../../common/types/auth.types.js';
+import type { AuditActor } from '../../common/types/audit.types.js';
 import { invalidLink } from '../../common/utils/auth-errors.util.js';
 import { InvitationsService } from './invitations.service.js';
 
@@ -49,10 +49,10 @@ export class InvitationAcceptanceController {
   @Post('accept')
   @HttpCode(HttpStatus.OK)
   async accept(
-    @CurrentAuth() auth: AuthContext,
+    @CurrentActor() actor: AuditActor,
     @Body(new ZodValidationPipe(invitationTokenRequestSchema)) body: InvitationTokenRequest,
   ): Promise<Organization> {
-    const outcome = await this.invitations.accept(auth.userId, body.token);
+    const outcome = await this.invitations.accept(actor, body.token);
     switch (outcome.status) {
       case 'accepted':
         return outcome.organization;

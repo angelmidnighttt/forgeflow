@@ -15,7 +15,9 @@ Mỗi bản cài đặt GitHub chỉ kết nối được với một organizati
 
 ## 2. Gắn repository vào project
 
-Ở mỗi dòng repository, chọn project nhận deployment của nó. Repository chưa gắn thì ForgeFlow bỏ qua deployment của nó. Mỗi repository chỉ gắn vào một project; một project có thể nhận từ nhiều repository.
+Ở mỗi dòng repository, chọn project nhận deployment của nó (chưa có project nào thì tạo ở trang **Project** trước). Repository chưa gắn thì ForgeFlow bỏ qua deployment của nó. Mỗi repository chỉ gắn vào một project; một project có thể nhận từ nhiều repository.
+
+Gắn xong, ForgeFlow lấy ngay lịch sử gần đây từ GitHub (30 deployment và 30 lần chạy Actions mới nhất), nên trang **Deployment** có dữ liệu sau vài giây, không cần chờ lần deploy tiếp theo.
 
 ## 3. Những gì hiện trong ForgeFlow
 

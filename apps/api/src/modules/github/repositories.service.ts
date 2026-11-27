@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Repository } from '@forgeflow/contracts';
 import {
+  integrations,
+  outboxEvents,
   projects,
   repositories,
   type DatabaseHandle,
@@ -13,6 +15,7 @@ import type { AuditActor } from '../../common/types/audit.types.js';
 import type { GithubRepository } from '../../common/types/github.types.js';
 import type { ApiEnv } from '../../config/env.js';
 import { AuditService } from '../audit/audit.service.js';
+import { OutboxService } from '../outbox/outbox.service.js';
 
 /**
  * The repositories of GitHub integrations, kept in step with what each installation can see,
@@ -24,6 +27,7 @@ export class RepositoriesService {
     @Inject(DATABASE) private readonly database: DatabaseHandle,
     @Inject(API_ENV) private readonly env: ApiEnv,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   /** Adds or refreshes `repos` of the integration within `tx`, keeping their project mapping. */
@@ -170,7 +174,46 @@ export class RepositoriesService {
         target: { type: 'repository', id: repositoryId },
         metadata: { repository: row.fullName, projectId, project: projectName },
       });
+      // The project sees the repository's history now, not at the next scheduled catch-up.
+      if (projectId) await this.queueCatchUp(tx, organizationId, row.integrationId);
       return { status: 'mapped' as const, repository: toRepository(row) };
+    });
+  }
+
+  /**
+   * Queues the integration's catch-up job (github.reconcile: the latest deployments and runs of
+   * its mapped repositories) unless one is still waiting. One already running may have read the
+   * mapping before this change, so it does not count.
+   */
+  private async queueCatchUp(
+    tx: DbExecutor,
+    organizationId: string,
+    integrationId: string,
+  ): Promise<void> {
+    const [integration] = await tx
+      .select({ externalId: integrations.externalId, status: integrations.status })
+      .from(integrations)
+      .where(
+        and(eq(integrations.organizationId, organizationId), eq(integrations.id, integrationId)),
+      );
+    if (!integration?.externalId || integration.status !== 'active') return;
+    const [waiting] = await tx
+      .select({ id: outboxEvents.id })
+      .from(outboxEvents)
+      .where(
+        and(
+          eq(outboxEvents.organizationId, organizationId),
+          eq(outboxEvents.topic, 'github.reconcile'),
+          eq(outboxEvents.status, 'pending'),
+          sql`${outboxEvents.payload} ->> 'integrationId' = ${integrationId}`,
+        ),
+      )
+      .limit(1);
+    if (waiting) return;
+    await this.outbox.enqueue(tx, {
+      organizationId,
+      topic: 'github.reconcile',
+      payload: { integrationId, installationId: integration.externalId },
     });
   }
 }

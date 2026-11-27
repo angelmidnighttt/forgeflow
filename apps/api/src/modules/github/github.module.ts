@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module.js';
 import { DeploymentsModule } from '../deployments/deployments.module.js';
 import { IntegrationsModule } from '../integrations/integrations.module.js';
+import { OutboxModule } from '../outbox/outbox.module.js';
 import { WebhooksModule } from '../webhooks/webhooks.module.js';
 import { GithubAppService } from './github-app.service.js';
 import { GithubInstallationsService } from './github-installations.service.js';
@@ -16,7 +17,7 @@ import { RepositoriesService } from './repositories.service.js';
  * worker) handling its webhooks and the catch-up job.
  */
 @Module({
-  imports: [AuditModule, IntegrationsModule, DeploymentsModule, WebhooksModule],
+  imports: [AuditModule, IntegrationsModule, DeploymentsModule, OutboxModule, WebhooksModule],
   controllers: [GithubController, RepositoriesController],
   providers: [
     GithubAppService,

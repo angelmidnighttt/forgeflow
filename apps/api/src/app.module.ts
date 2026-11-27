@@ -2,6 +2,7 @@ import { Module, type DynamicModule, type Type } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { QUIET_PATHS, REDACTED_LOG_PATHS } from './common/constants/http.constants.js';
+import { redactRequestLog } from './common/utils/log-redaction.util.js';
 import { API_ENV, CLOCK } from './common/constants/injection-tokens.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
@@ -44,6 +45,8 @@ export function coreImports(env: ApiEnv): Array<Type | DynamicModule> {
         genReqId: resolveRequestId,
         autoLogging: { ignore: (req) => QUIET_PATHS.has(req.url ?? '') },
         redact: { paths: REDACTED_LOG_PATHS, censor: '[REDACTED]' },
+        // OAuth codes and states in callback URLs: one-time, but no business in a log.
+        serializers: { req: redactRequestLog },
         ...(env.NODE_ENV === 'development'
           ? { transport: { target: 'pino-pretty', options: { singleLine: true } } }
           : {}),

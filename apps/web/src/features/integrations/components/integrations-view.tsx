@@ -10,6 +10,7 @@ import {
   type WebhookDelivery,
 } from '@forgeflow/contracts';
 import { ExternalLink, Lock, RotateCcw } from 'lucide-react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { GithubMark } from '@/components/github-mark';
@@ -271,6 +272,19 @@ function GithubInstallation({
       {repositories?.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Bản cài đặt chưa có quyền với repository nào.
+        </p>
+      ) : null}
+      {repositories && repositories.length > 0 && projects.length === 0 && canManage ? (
+        <p className="rounded-md bg-muted px-3 py-2 text-sm">
+          Organization chưa có project nào. Deployment chỉ được ghi cho repository đã gắn vào một
+          project:{' '}
+          <Link
+            href={`/orgs/${organization.id}/projects`}
+            className="font-medium underline underline-offset-4"
+          >
+            tạo project
+          </Link>{' '}
+          trước, rồi quay lại đây chọn project cho repository.
         </p>
       ) : null}
       {repositories && repositories.length > 0 ? (

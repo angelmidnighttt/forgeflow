@@ -10,9 +10,10 @@ import {
   createDatabase,
   integrations,
   memberships,
+  outboxEvents,
   type DatabaseHandle,
 } from '@forgeflow/database';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { createApp } from '../../../src/app.factory.js';
 import { bearer, client, envFor, registerUser, type SignedIn } from '../../support/http.js';
@@ -337,12 +338,35 @@ describe('repositories', () => {
     const [first] = z.array(repositorySchema).parse(list.body.data);
     const url = `/api/v1/organizations/${organization.id}/repositories/${first!.id}`;
 
+    const catchUps = (since: Date) =>
+      database.db
+        .select({ status: outboxEvents.status })
+        .from(outboxEvents)
+        .where(
+          and(
+            eq(outboxEvents.topic, 'github.reconcile'),
+            sql`${outboxEvents.payload} ->> 'integrationId' = ${integration!.id}`,
+            gte(outboxEvents.createdAt, since),
+          ),
+        );
+    const before = new Date(Date.now() - 1000);
     const mapped = await client(app)
       .patch(url)
       .set('Authorization', bearer(owner))
       .send({ projectId: project.body.data.id })
       .expect(200);
     expect(repositorySchema.parse(mapped.body.data).projectId).toBe(project.body.data.id);
+    // Its history is fetched now (the catch-up job is queued), not at the next scheduled run;
+    // mapping again does not pile up another waiting job.
+    expect((await catchUps(before)).length).toBeGreaterThanOrEqual(1);
+    await client(app)
+      .patch(url)
+      .set('Authorization', bearer(owner))
+      .send({ projectId: project.body.data.id })
+      .expect(200);
+    expect(
+      (await catchUps(before)).filter((e) => e.status === 'pending').length,
+    ).toBeLessThanOrEqual(1);
 
     const member = await registerUser(app);
     await addMember(database, organization.id, member, 'member');

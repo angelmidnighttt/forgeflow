@@ -161,7 +161,9 @@ EOF
         sed -e "s|^SITE_HOST=.*|SITE_HOST=$site_host|" \
           -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 32)|" \
           -e "s|^APP_DB_PASSWORD=.*|APP_DB_PASSWORD=$(openssl rand -hex 32)|" \
-          -e "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" > "$root/.env"
+          -e "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" \
+          -e "s|^SECRET_ENCRYPTION_KEYS=.*|SECRET_ENCRYPTION_KEYS=1:$(openssl rand -base64 32)|" \
+          > "$root/.env"
     )
     chown deploy:deploy "$root/.env"
     created_env=true

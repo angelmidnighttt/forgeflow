@@ -5,6 +5,7 @@ const valid = {
   NODE_ENV: 'development',
   DATABASE_URL: 'postgres://forgeflow:forgeflow@localhost:5432/forgeflow',
   JWT_SECRET: 'dev-only-local-jwt-secret-change-me-0123456789',
+  SECRET_ENCRYPTION_KEYS: '1:ZGV2LW9ubHktbG9jYWwtc2VjcmV0LWtleS0wMTIzNDU=',
   SMTP_URL: 'smtp://localhost:1025',
   MAIL_FROM: 'ForgeFlow <no-reply@forgeflow.localhost>',
 };
@@ -58,5 +59,49 @@ describe('apiEnvSchema', () => {
     for (const from of [undefined, '', 'ForgeFlow', 'ForgeFlow <no-reply>', 'a@b, c@d']) {
       expect(issuesFor({ MAIL_FROM: from })).toEqual(['MAIL_FROM']);
     }
+  });
+
+  it('reads SECRET_ENCRYPTION_KEYS as a keyring whose highest version is current', () => {
+    const one = Buffer.alloc(32, 1).toString('base64');
+    const two = Buffer.alloc(32, 2).toString('base64');
+    const keyring = apiEnvSchema.parse({
+      ...valid,
+      SECRET_ENCRYPTION_KEYS: ` 2:${two} , 1:${one} `,
+    }).SECRET_ENCRYPTION_KEYS;
+    expect(keyring.current).toBe(2);
+    expect([...keyring.keys.keys()].sort()).toEqual([1, 2]);
+    expect(keyring.keys.get(1)).toEqual(Buffer.alloc(32, 1));
+  });
+
+  it('rejects malformed encryption keys', () => {
+    const key = Buffer.alloc(32, 7).toString('base64');
+    for (const value of [
+      undefined,
+      '',
+      key, // no version
+      `0:${key}`,
+      `1:${Buffer.alloc(16).toString('base64')}`, // 16 bytes
+      `1:${key},1:${key}`,
+      '1:not base64!',
+    ]) {
+      expect(issuesFor({ SECRET_ENCRYPTION_KEYS: value })).toEqual(['SECRET_ENCRYPTION_KEYS']);
+    }
+  });
+
+  it('refuses the development keys in production', () => {
+    const real = `2:${Buffer.alloc(32, 9).toString('base64')}`;
+    const production = {
+      NODE_ENV: 'production',
+      JWT_SECRET: 'a-real-production-secret-0123456789abcdef',
+    };
+    expect(issuesFor({ ...production, SECRET_ENCRYPTION_KEYS: real })).toEqual([]);
+    expect(issuesFor(production)).toEqual(['SECRET_ENCRYPTION_KEYS']);
+    // Still listed next to a real key, it is refused all the same.
+    expect(
+      issuesFor({
+        ...production,
+        SECRET_ENCRYPTION_KEYS: `${real},${valid.SECRET_ENCRYPTION_KEYS}`,
+      }),
+    ).toEqual(['SECRET_ENCRYPTION_KEYS']);
   });
 });

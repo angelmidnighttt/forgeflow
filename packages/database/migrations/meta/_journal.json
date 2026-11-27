@@ -92,6 +92,20 @@
       "when": 1795758414702,
       "tag": "0012_audit_logs_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795760420810,
+      "tag": "0013_integrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795760422306,
+      "tag": "0014_integrations_row_level_security",
+      "breakpoints": true
     }
   ]
 }

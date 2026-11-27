@@ -1,8 +1,30 @@
 import { baseEnvSchema, loadDotEnv, parseEnv, z } from '@forgeflow/config';
 import { databaseEnvSchema } from '@forgeflow/database';
+import { parseKeyring } from '../common/utils/envelope.util.js';
 
 /** Prefix of the development secret in .env.example; refused in production. */
 export const DEV_JWT_SECRET_PREFIX = 'dev-only-';
+
+/** The development key in .env.example ("dev-only-local-secret-key-012345"); refused in production. */
+export const DEV_SECRET_ENCRYPTION_KEY = Buffer.from('dev-only-local-secret-key-012345');
+
+/**
+ * SECRET_ENCRYPTION_KEYS: the keys (KEKs) that wrap the data key of every integration secret, as
+ * `<version>:<base64 of 32 random bytes>`, comma-separated. The highest version encrypts new
+ * secrets; the others keep opening older ones until `npm run secrets:rewrap` moves them over.
+ */
+export const secretEncryptionKeysSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .transform((value, ctx) => {
+    const keyring = parseKeyring(value);
+    if (typeof keyring === 'string') {
+      ctx.issues.push({ code: 'custom', message: keyring, input: value });
+      return z.NEVER;
+    }
+    return keyring;
+  });
 
 /** `address@domain` or `Display Name <address@domain>`. */
 const MAILBOX_PATTERN = /^(?:[^<>@]*<[^<>@\s]+@[^<>@\s]+>|[^<>@\s]+@[^<>@\s]+)$/;
@@ -31,6 +53,7 @@ export const apiEnvSchema = baseEnvSchema
 
     /** HMAC key that signs access tokens (HS256). Use at least 32 random characters. */
     JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
+    SECRET_ENCRYPTION_KEYS: secretEncryptionKeysSchema,
     /** Refresh cookie gets the Secure flag and the __Secure- prefix. Defaults to true in production. */
     COOKIE_SECURE: z.stringbool().optional(),
 
@@ -56,6 +79,17 @@ export const apiEnvSchema = baseEnvSchema
     {
       path: ['JWT_SECRET'],
       message: 'the development secret from .env.example cannot be used in production',
+    },
+  )
+  .refine(
+    (env) =>
+      env.NODE_ENV !== 'production' ||
+      ![...env.SECRET_ENCRYPTION_KEYS.keys.values()].some((key) =>
+        key.equals(DEV_SECRET_ENCRYPTION_KEY),
+      ),
+    {
+      path: ['SECRET_ENCRYPTION_KEYS'],
+      message: 'the development key from .env.example cannot be used in production',
     },
   )
   .refine(

@@ -24,6 +24,11 @@ function role(metadata: Metadata, key: string): string {
     : text(metadata, key);
 }
 
+function version(metadata: Metadata): string {
+  const value = metadata.version;
+  return typeof value === 'number' ? String(value) : '?';
+}
+
 /** The person an entry is about (a member): their name, else their email. */
 function person(metadata: Metadata): string {
   const name = metadata.name;
@@ -56,6 +61,12 @@ const DESCRIBE: Record<string, (m: Metadata) => string> = {
     `Đổi tên environment ${quoted(m, 'from')} thành ${quoted(m, 'to')} (project ${quoted(m, 'project')})`,
   'environment.protected': (m) =>
     `Bật bảo vệ cho environment ${quoted(m, 'name')} (project ${quoted(m, 'project')})`,
+  'integration.created': (m) =>
+    `Kết nối integration ${quoted(m, 'integration')} (${text(m, 'kind')})`,
+  'integration.secret_rotated': (m) =>
+    `Đổi secret ${quoted(m, 'secret')} của integration ${quoted(m, 'integration')} (phiên bản ${version(m)})`,
+  'integration.secret_revoked': (m) =>
+    `Thu hồi secret ${quoted(m, 'secret')} của integration ${quoted(m, 'integration')}`,
   'environment.unprotected': (m) =>
     `Tắt bảo vệ cho environment ${quoted(m, 'name')} (project ${quoted(m, 'project')})`,
 };

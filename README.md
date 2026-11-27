@@ -39,21 +39,22 @@ Nếu cổng đã bị chiếm, đặt cổng khác trước khi chạy và sử
 
 ## Script
 
-| Lệnh                              | Việc làm                                                       |
-| --------------------------------- | -------------------------------------------------------------- |
-| `npm run dev`                     | Chạy toàn bộ môi trường local                                  |
-| `npm run build`                   | Build packages, api và web                                     |
-| `npm run typecheck`               | Kiểm tra kiểu toàn repo, gồm cả code test                      |
-| `npm run lint`                    | ESLint                                                         |
-| `npm run format` / `format:check` | Prettier                                                       |
-| `npm test`                        | Build rồi chạy Jest (unit + integration, cần `db:up`)          |
-| `npm run test:unit`               | Chỉ chạy unit test, không cần dịch vụ ngoài                    |
-| `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL và Mailpit local                          |
-| `npm run db:app-role`             | Tạo / cập nhật role `forgeflow_app` ở local (chạy lại an toàn) |
-| `npm run db:generate`             | Sinh migration từ schema Drizzle (`drizzle-kit generate`)      |
-| `npm run db:migrate`              | Áp dụng migration (chạy lặp lại an toàn)                       |
-| `npm run db:reset`                | Xoá sạch và migrate lại — chỉ chạy được với DB localhost       |
-| `npm run db:seed`                 | Nạp dữ liệu mẫu                                                |
+| Lệnh                              | Việc làm                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| `npm run dev`                     | Chạy toàn bộ môi trường local                                                               |
+| `npm run build`                   | Build packages, api và web                                                                  |
+| `npm run typecheck`               | Kiểm tra kiểu toàn repo, gồm cả code test                                                   |
+| `npm run lint`                    | ESLint                                                                                      |
+| `npm run format` / `format:check` | Prettier                                                                                    |
+| `npm test`                        | Build rồi chạy Jest (unit + integration, cần `db:up`)                                       |
+| `npm run test:unit`               | Chỉ chạy unit test, không cần dịch vụ ngoài                                                 |
+| `npm run db:up` / `db:down`       | Bật / tắt PostgreSQL và Mailpit local                                                       |
+| `npm run db:app-role`             | Tạo / cập nhật role `forgeflow_app` ở local (chạy lại an toàn)                              |
+| `npm run db:generate`             | Sinh migration từ schema Drizzle (`drizzle-kit generate`)                                   |
+| `npm run db:migrate`              | Áp dụng migration (chạy lặp lại an toàn)                                                    |
+| `npm run db:reset`                | Xoá sạch và migrate lại — chỉ chạy được với DB localhost                                    |
+| `npm run db:seed`                 | Nạp dữ liệu mẫu                                                                             |
+| `npm run secrets:rewrap`          | Chuyển mọi secret của integration sang khoá mã hoá mới nhất (xoay `SECRET_ENCRYPTION_KEYS`) |
 
 ## Cấu trúc
 
@@ -283,6 +284,8 @@ Mọi thứ ForgeFlow quản lý thuộc về một organization (tenant). Một
 | `projects.manage`      | ✓     | ✓     |        |        |
 | `environments.protect` | ✓     | ✓     |        |        |
 | `audit.read`           | ✓     | ✓     |        |        |
+| `integrations.read`    | ✓     | ✓     | ✓      | ✓      |
+| `integrations.manage`  | ✓     | ✓     |        |        |
 
 - **Thứ bậc**: owner đổi vai trò / xoá / mời được mọi vai trò (kể cả owner khác). Admin chỉ quản lý và chỉ cấp được `member`, `viewer` — không đụng được admin khác hay owner. Ai cũng tự rời org được.
 - **Luôn còn ít nhất 1 owner**: hạ quyền hay xoá owner cuối cùng → `409 LAST_OWNER`. Mỗi thay đổi khoá dòng org (`SELECT … FOR UPDATE`) và đọc lại vai trò người thực hiện trong transaction, nên hai owner hạ quyền nhau cùng lúc cũng không làm org mất owner.
@@ -309,17 +312,36 @@ Project là một ứng dụng / dịch vụ mà org vận hành; environment l�
 - Chưa có xoá project / environment.
 - Thử bằng REST Client: `apps/api/http/projects.http`.
 
+## Integration và secret
+
+Integration là một kết nối của org tới hệ thống bên ngoài (GitHub ở Phase 2; Alertmanager, webhook, Prometheus… ở các phase sau), có thể gắn với một project. Cấu hình không bí mật nằm trong `integrations.config`; secret (token, mật khẩu, khoá ký) nằm trong `integration_secrets`, **được mã hoá**.
+
+- **Mã hoá envelope**: mỗi phiên bản secret được mã hoá AES-256-GCM bằng một khoá dữ liệu (DEK) ngẫu nhiên riêng; DEK được mã hoá bằng một khoá chính (KEK) trong `SECRET_ENCRYPTION_KEYS` (`<version>:<base64 32 byte>`, cách nhau dấu phẩy, version cao nhất là khoá hiện hành). Bản mã gắn với org / integration / tên / phiên bản (AAD): chép sang dòng khác thì không giải mã được. api từ chối khoá dev của `.env.example` khi `NODE_ENV=production`.
+- **Không bao giờ trả secret**: mọi API đọc chỉ trả metadata (tên, phiên bản, ai sinh ra, đang dùng hay đã thu hồi). Code nói chuyện với hệ thống ngoài đọc giá trị qua `IntegrationSecretsService.reveal()`.
+- **Đổi secret**: thêm phiên bản mới, phiên bản cũ bị thu hồi. Secret ForgeFlow sinh (`generated`) có giá trị mới trả về **đúng một lần** trong câu trả lời (`Cache-Control: no-store`); secret người dùng nhập (`provided`) cần gửi giá trị mới. Thu hồi: không còn phiên bản nào dùng được cho tới lần đổi tiếp theo. Cả hai được ghi vào nhật ký hoạt động (không kèm giá trị).
+- **Xoay khoá chính (KEK)**: thêm khoá mới với version cao hơn vào đầu `SECRET_ENCRYPTION_KEYS` (`2:<mới>,1:<cũ>`), deploy, chạy `npm run secrets:rewrap` (bằng role owner; chỉ mã hoá lại DEK, bản mã giữ nguyên), rồi bỏ khoá cũ. **Mất khoá là mất mọi secret**: sao lưu nó tách khỏi bản dump DB.
+- Ở DB: RLS theo org cho cả hai bảng; role `forgeflow_app` không `DELETE` được secret và chỉ `UPDATE` được cột `revoked_at`, nên một bản mã đã lưu không bao giờ bị ghi đè.
+
+| Endpoint (dưới `/api/v1/organizations/:orgId`) | Quyền cần             | Việc làm                                                    |
+| ---------------------------------------------- | --------------------- | ----------------------------------------------------------- |
+| `GET /integrations`, `GET /integrations/:id`   | `integrations.read`   | Integration kèm metadata secret                             |
+| `POST /integrations/:id/secrets/:name/rotate`  | `integrations.manage` | Đổi secret (`{ "value": … }` với secret do người dùng nhập) |
+| `DELETE /integrations/:id/secrets/:name`       | `integrations.manage` | Thu hồi secret                                              |
+
+Tạo integration không có route chung: luồng kết nối của từng loại (cài GitHub App…) gọi `IntegrationsService.create()`.
+
 ## Nhật ký hoạt động (audit log)
 
 Mỗi thao tác nhạy cảm trong một org được ghi vào bảng `audit_logs` **trong cùng transaction** với chính thao tác đó: không thể có thay đổi mà thiếu nhật ký, hay nhật ký mà thay đổi không xảy ra. Ghi nhật ký lỗi thì thao tác bị huỷ theo (`500`).
 
-| Hành động                                                                 | Khi nào                                                |
-| ------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `organization.created`, `organization.renamed`                            | Tạo org; đổi tên (chỉ khi tên thật sự đổi)             |
-| `member.role_changed`, `member.removed`, `member.left`                    | Đổi vai trò (khi khác vai trò cũ); xoá người khác; rời |
-| `invitation.created`, `invitation.revoked`, `invitation.accepted`         | Mời; thu hồi (kể cả khi gửi email lỗi); nhận lời mời   |
-| `project.created`, `project.renamed`                                      | Tạo, đổi tên project                                   |
-| `environment.created`, `environment.renamed`, `environment.(un)protected` | Thêm, đổi tên, bật / tắt bảo vệ environment            |
+| Hành động                                                                         | Khi nào                                                |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `organization.created`, `organization.renamed`                                    | Tạo org; đổi tên (chỉ khi tên thật sự đổi)             |
+| `member.role_changed`, `member.removed`, `member.left`                            | Đổi vai trò (khi khác vai trò cũ); xoá người khác; rời |
+| `invitation.created`, `invitation.revoked`, `invitation.accepted`                 | Mời; thu hồi (kể cả khi gửi email lỗi); nhận lời mời   |
+| `project.created`, `project.renamed`                                              | Tạo, đổi tên project                                   |
+| `integration.created`, `integration.secret_rotated`, `integration.secret_revoked` | Kết nối integration; đổi, thu hồi secret               |
+| `environment.created`, `environment.renamed`, `environment.(un)protected`         | Thêm, đổi tên, bật / tắt bảo vệ environment            |
 
 - Mỗi entry có: người thực hiện (`actor_user_id`, hoặc `system` cho worker sau này), đối tượng (`target_type` + `target_id`), chi tiết đủ để đọc lại sau (`metadata`: tên, email, vai trò trước / sau — **không bao giờ có secret**), IP client và `X-Request-Id` của request (để tìm log).
 - **Chỉ thêm, không sửa / xoá**: role `forgeflow_app` có `INSERT` và `SELECT` trên `audit_logs`, không có `UPDATE` / `DELETE` (migration 0012), cộng RLS theo org như mọi bảng tenant.
@@ -338,7 +360,7 @@ Dữ liệu tenant được cách ly hai lớp: tầng app kiểm tra membership
 - api **từ chối khởi động** nếu `DATABASE_URL` là superuser hoặc role có `BYPASSRLS`.
 - Migration cấp quyền cho `forgeflow_app` nhưng không đặt mật khẩu. Ở local, role đăng nhập được tạo bởi `infra/compose/postgres/init/01-app-role.sql` (Postgres chạy khi tạo volume; volume cũ: `npm run db:app-role`); CI chạy cùng file đó; trên server (`infra/staging`), mỗi lần deploy chạy lại file này với mật khẩu lấy từ `APP_DB_PASSWORD` (biến `FORGEFLOW_APP_DB_PASSWORD` của psql; không đặt thì mặc định là `forgeflow_app`).
 - **Truy vấn bảng tenant phải chạy trong `database.withTenant({ organizationId, userId }, (tx) => …)`**: mở transaction và đặt `app.organization_id` / `app.user_id` (chỉ trong transaction). Không có context thì policy không khớp dòng nào.
-- Policy hiện có: `organizations`, `memberships`, `invitations`, `projects`, `environments` đọc / ghi theo org trong context (`audit_logs`: chỉ đọc và thêm); user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
+- Policy hiện có: `organizations`, `memberships`, `invitations`, `projects`, `environments`, `integrations`, `integration_secrets` đọc / ghi theo org trong context (`audit_logs`: chỉ đọc và thêm; `integration_secrets`: không xoá, chỉ sửa `revoked_at`); user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
 - Luồng chưa biết org (xem / nhận lời mời theo token) dùng hàm `SECURITY DEFINER` hẹp (`forgeflow_invitation_organization`) chỉ trả org id, rồi chạy phần còn lại trong `withTenant`.
 - **Thêm bảng tenant mới**: cột `organization_id NOT NULL`; trong một migration viết tay (`cd packages/database && npx drizzle-kit generate --custom --name <tên>`): `ENABLE` + `FORCE ROW LEVEL SECURITY` và policy theo `forgeflow_current_organization_id()`; composite FK `(organization_id, …)` tới bảng cha (bảng cha có `UNIQUE (organization_id, id)`; ví dụ `environments` → `projects`). Test catalog sẽ đỏ nếu quên bật RLS.
 

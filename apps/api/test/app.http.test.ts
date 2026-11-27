@@ -6,6 +6,7 @@ import { createApp } from '../src/app.factory.js';
 import { Public } from '../src/common/decorators/public.decorator.js';
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe.js';
 import type { ApiEnv } from '../src/config/env.js';
+import { TEST_KEYRING } from './support/http.js';
 
 // The database URL points at a port where nothing listens, so /ready must report "down"
 // without the test needing a running PostgreSQL.
@@ -17,6 +18,7 @@ const env: ApiEnv = {
   API_PORT: 0,
   APP_ORIGIN: 'http://localhost:3000',
   JWT_SECRET: 'test-only-jwt-secret-0123456789abcdef',
+  SECRET_ENCRYPTION_KEYS: TEST_KEYRING,
   SMTP_URL: 'smtp://127.0.0.1:1',
   MAIL_FROM: 'ForgeFlow <no-reply@forgeflow.test>',
   GITHUB_URL: 'https://github.com',

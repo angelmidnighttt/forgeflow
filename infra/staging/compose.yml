@@ -52,6 +52,20 @@ services:
       MIGRATION_DATABASE_URL: postgres://forgeflow:${POSTGRES_PASSWORD:?}@postgres:5432/forgeflow
     command: ['node', 'packages/database/dist/scripts/migrate.js']
 
+  # Moves every integration secret's data key under the current SECRET_ENCRYPTION_KEYS key
+  # (rotating that key; README.md): forgeflow-compose run --rm rewrap-secrets
+  rewrap-secrets:
+    image: *api-image
+    profiles: [jobs]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MIGRATION_DATABASE_URL: postgres://forgeflow:${POSTGRES_PASSWORD:?}@postgres:5432/forgeflow
+      SECRET_ENCRYPTION_KEYS: ${SECRET_ENCRYPTION_KEYS:?}
+    command: ['node', 'apps/api/dist/scripts/rewrap-secrets.js']
+
   api:
     image: *api-image
     restart: unless-stopped
@@ -69,6 +83,7 @@ services:
       # Caddy is the one proxy in front: X-Forwarded-For's last hop is the client.
       TRUST_PROXY: '1'
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      SECRET_ENCRYPTION_KEYS: ${SECRET_ENCRYPTION_KEYS:?set SECRET_ENCRYPTION_KEYS in .env}
       SMTP_URL: ${SMTP_URL:?set SMTP_URL in .env}
       MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}

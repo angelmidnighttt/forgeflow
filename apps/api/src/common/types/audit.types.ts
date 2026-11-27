@@ -8,7 +8,8 @@ export interface AuditActor {
   requestId: string | null;
 }
 
-export type AuditTargetType = 'organization' | 'user' | 'invitation' | 'project' | 'environment';
+export type AuditTargetType =
+  'organization' | 'user' | 'invitation' | 'project' | 'environment' | 'integration';
 
 /** One entry to add to an organization's audit trail. */
 export interface AuditEntry {

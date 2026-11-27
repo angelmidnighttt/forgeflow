@@ -32,6 +32,26 @@ describe('describeAuditEntry', () => {
     ).toBe('Thêm environment “eu” vào project “Checkout”, có bảo vệ');
   });
 
+  it('describes integration secrets without ever showing one', () => {
+    expect(
+      describeAuditEntry({
+        action: 'integration.secret_rotated',
+        metadata: {
+          integration: 'Alertmanager',
+          kind: 'alertmanager',
+          secret: 'token',
+          version: 3,
+        },
+      }),
+    ).toBe('Đổi secret “token” của integration “Alertmanager” (phiên bản 3)');
+    expect(
+      describeAuditEntry({
+        action: 'integration.created',
+        metadata: { integration: 'acme-org', kind: 'github', secrets: [] },
+      }),
+    ).toBe('Kết nối integration “acme-org” (github)');
+  });
+
   it('falls back to the email, and tells the special cases apart', () => {
     expect(
       describeAuditEntry({

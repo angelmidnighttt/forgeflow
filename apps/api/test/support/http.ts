@@ -2,11 +2,22 @@ import { randomInt, randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { tokenResponseSchema, type TokenResponse } from '@forgeflow/contracts';
 import request from 'supertest';
+import type { Keyring } from '../../src/common/types/secrets.types.js';
+import { parseKeyring } from '../../src/common/utils/envelope.util.js';
 import type { ApiEnv } from '../../src/config/env.js';
 import { testDatabaseUrl } from './test-database.js';
 
 export const APP_ORIGIN = 'http://localhost:3000';
 export const JWT_SECRET = 'test-only-jwt-secret-0123456789abcdef';
+/** The test keyring: key 1 is 32 bytes of 0x11. */
+export const TEST_KEYRING = keyring(`1:${Buffer.alloc(32, 0x11).toString('base64')}`);
+
+/** A parsed SECRET_ENCRYPTION_KEYS value. */
+export function keyring(value: string): Keyring {
+  const parsed = parseKeyring(value);
+  if (typeof parsed === 'string') throw new Error(parsed);
+  return parsed;
+}
 export const TEST_PASSWORD = 'correct horse battery staple';
 
 /** Environment for an app that talks to the integration test database. */
@@ -19,6 +30,7 @@ export function envFor(overrides: Partial<ApiEnv> = {}): ApiEnv {
     API_PORT: 0,
     APP_ORIGIN,
     JWT_SECRET,
+    SECRET_ENCRYPTION_KEYS: TEST_KEYRING,
     // Nothing listens here: tests that send email pass the Mailpit URL instead.
     SMTP_URL: 'smtp://127.0.0.1:1',
     MAIL_FROM: 'ForgeFlow <no-reply@forgeflow.test>',

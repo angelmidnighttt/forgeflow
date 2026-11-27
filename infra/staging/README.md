@@ -146,6 +146,16 @@ Caddy tự lấy chứng chỉ cho tên mới.
 - `JWT_SECRET`: access token cũ hết hiệu lực, người dùng tự lấy token mới bằng refresh cookie.
 - `APP_DB_PASSWORD`: deploy lại là xong, vì bước đặt role dùng mật khẩu mới trước khi api khởi động.
 - `POSTGRES_PASSWORD`: giá trị này chỉ có tác dụng khi tạo volume. Muốn đổi thì chạy `ALTER ROLE forgeflow PASSWORD '…'` trong psql trước, rồi mới sửa `.env`.
+- `SECRET_ENCRYPTION_KEYS` (khoá mã hoá secret của integration): **không được mất**, vì mất là mất mọi secret đã lưu; chép nó ra chỗ an toàn, tách khỏi bản backup DB. Đổi khoá:
+  1. Thêm khoá mới với version cao hơn vào đầu: `SECRET_ENCRYPTION_KEYS=2:<openssl rand -base64 32>,1:<khoá cũ>`, rồi deploy lại.
+  2. `forgeflow-compose run --rm rewrap-secrets`: mã hoá lại khoá dữ liệu của mọi secret bằng khoá 2 (bản mã giữ nguyên).
+  3. Bỏ khoá 1 khỏi `.env`, deploy lại.
+
+**Server dựng trước khi có biến này** (bootstrap cũ): thêm vào `/opt/forgeflow/.env` **trước khi** merge bản có integration lên `main`, nếu không deploy sẽ dừng với "set SECRET_ENCRYPTION_KEYS in .env":
+
+```bash
+ssh root@<IP> 'grep -q "^SECRET_ENCRYPTION_KEYS=" /opt/forgeflow/.env || echo "SECRET_ENCRYPTION_KEYS=1:$(openssl rand -base64 32)" >> /opt/forgeflow/.env'
+```
 
 ## Bảo mật
 

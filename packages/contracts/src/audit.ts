@@ -19,6 +19,9 @@ export const AUDIT_ACTIONS = [
   'environment.renamed',
   'environment.protected',
   'environment.unprotected',
+  'integration.created',
+  'integration.secret_rotated',
+  'integration.secret_revoked',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

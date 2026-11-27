@@ -49,6 +49,8 @@ export default {
       testMatch: ['**/test/**/*.int.test.ts'],
       testPathIgnorePatterns: ['/node_modules/', '/dist/'],
       globalSetup: '<rootDir>/apps/api/test/support/global-setup.ts',
+      // 20 s per test instead of 5 (a project-level testTimeout is not applied by Jest 30).
+      setupFilesAfterEnv: ['<rootDir>/apps/api/test/support/integration-timeout.ts'],
     },
   ],
 };

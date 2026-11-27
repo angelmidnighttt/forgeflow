@@ -27,6 +27,7 @@
     "db:migrate": "npm run migrate -w @forgeflow/database",
     "db:reset": "npm run reset -w @forgeflow/database",
     "db:seed": "npm run seed -w @forgeflow/database",
+    "secrets:rewrap": "npm run secrets:rewrap -w @forgeflow/api",
     "clean": "rimraf --glob \"apps/*/dist\" \"packages/*/dist\" \"apps/web/.next\""
   },
   "devDependencies": {

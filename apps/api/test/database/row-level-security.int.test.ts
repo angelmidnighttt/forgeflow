@@ -4,6 +4,8 @@ import {
   auditLogs,
   createDatabase,
   environments,
+  integrationSecrets,
+  integrations,
   invitations,
   memberships,
   organizations,
@@ -13,7 +15,9 @@ import {
   type User,
 } from '@forgeflow/database';
 import { eq, sql } from 'drizzle-orm';
+import { seal, secretContext } from '../../src/common/utils/envelope.util.js';
 import { hashSecretToken } from '../../src/common/utils/secret-token.util.js';
+import { TEST_KEYRING } from '../support/http.js';
 import {
   createUser,
   pgErrorCode,
@@ -108,6 +112,8 @@ describe('every tenant table', () => {
     expect(tables.rows.map((t) => t.relname)).toEqual(
       expect.arrayContaining([
         'environments',
+        'integration_secrets',
+        'integrations',
         'invitations',
         'memberships',
         'organizations',
@@ -380,5 +386,93 @@ describe('the audit trail', () => {
 
     const rows = await owner.db.select().from(auditLogs).where(eq(auditLogs.organizationId, orgA));
     expect(rows.every((row) => row.action === 'organization.renamed')).toBe(true);
+  });
+});
+
+describe('integration secrets', () => {
+  let integrationA: string;
+  let ciphertext: Buffer;
+
+  beforeAll(async () => {
+    integrationA = randomUUID();
+    await owner.db.insert(integrations).values({
+      id: integrationA,
+      organizationId: orgA,
+      kind: 'webhook',
+      name: `RLS integration ${integrationA}`,
+    });
+    // A real sealed value: the integrations test may rewrap it at any moment.
+    const sealed = seal(
+      TEST_KEYRING,
+      'rls test value',
+      secretContext({
+        organizationId: orgA,
+        integrationId: integrationA,
+        name: 'signing_secret',
+        version: 1,
+      }),
+    );
+    ciphertext = sealed.ciphertext;
+    await owner.db.insert(integrationSecrets).values({
+      organizationId: orgA,
+      integrationId: integrationA,
+      name: 'signing_secret',
+      version: 1,
+      source: 'generated',
+      ...sealed,
+    });
+  });
+
+  it("are read only in their organization's context", async () => {
+    expect(await app.db.select().from(integrationSecrets)).toEqual([]);
+    const inB = await app.withTenant({ organizationId: orgB }, async (tx) => ({
+      integrations: await tx.select().from(integrations),
+      secrets: await tx.select().from(integrationSecrets),
+    }));
+    expect(inB).toEqual({ integrations: [], secrets: [] });
+    const inA = await app.withTenant({ organizationId: orgA }, (tx) =>
+      tx.select().from(integrationSecrets),
+    );
+    expect(inA.map((row) => row.integrationId)).toEqual([integrationA]);
+  });
+
+  it('can be revoked by the api but never rewritten or deleted', async () => {
+    const inA = <T>(work: Parameters<typeof app.withTenant<T>>[1]) =>
+      app.withTenant({ organizationId: orgA }, work).catch((e: unknown) => e);
+    const where = eq(integrationSecrets.integrationId, integrationA);
+
+    const rewrite = await inA((tx) =>
+      tx
+        .update(integrationSecrets)
+        .set({ ciphertext: Buffer.alloc(40, 9) })
+        .where(where),
+    );
+    expect(pgErrorCode(rewrite)).toBe('42501');
+    const remove = await inA((tx) => tx.delete(integrationSecrets).where(where));
+    expect(pgErrorCode(remove)).toBe('42501');
+
+    await app.withTenant({ organizationId: orgA }, (tx) =>
+      tx.update(integrationSecrets).set({ revokedAt: new Date() }).where(where),
+    );
+    const [row] = await owner.db.select().from(integrationSecrets).where(where);
+    expect(row?.revokedAt).not.toBeNull();
+    expect(row?.ciphertext.equals(ciphertext)).toBe(true);
+  });
+
+  it("cannot belong to another organization's integration", async () => {
+    const error = await owner.db
+      .insert(integrationSecrets)
+      .values({
+        organizationId: orgB,
+        integrationId: integrationA,
+        name: 'stolen',
+        version: 1,
+        source: 'provided',
+        kekVersion: 1,
+        wrappedKey: Buffer.alloc(60),
+        ciphertext: Buffer.alloc(40),
+      })
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(error)).toBe('23503');
   });
 });

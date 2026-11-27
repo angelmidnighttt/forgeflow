@@ -36,6 +36,10 @@ export const PERMISSIONS = {
   'environments.protect': MANAGERS,
   /** The organization's audit trail. */
   'audit.read': MANAGERS,
+  /** See integrations and their secrets' metadata (never a secret's value). */
+  'integrations.read': ALL_ROLES,
+  /** Rotate and revoke integration secrets (later: connect and disconnect integrations). */
+  'integrations.manage': MANAGERS,
 } as const satisfies Record<string, readonly OrganizationRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

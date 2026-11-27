@@ -1,0 +1,80 @@
+{
+  "action": "created",
+  "sender": {
+    "id": 9919,
+    "url": "https://api.github.com/users/octo-org",
+    "type": "User",
+    "login": "octo-org",
+    "node_id": "U_kgDOAAAmvw",
+    "html_url": "https://github.com/octo-org",
+    "gists_url": "https://api.github.com/users/octo-org/gists{/gist_id}",
+    "repos_url": "https://api.github.com/users/octo-org/repos",
+    "avatar_url": "https://avatars.githubusercontent.com/u/9919?v=4",
+    "events_url": "https://api.github.com/users/octo-org/events{/privacy}",
+    "site_admin": false,
+    "gravatar_id": "",
+    "starred_url": "https://api.github.com/users/octo-org/starred{/owner}{/repo}",
+    "followers_url": "https://api.github.com/users/octo-org/followers",
+    "following_url": "https://api.github.com/users/octo-org/following{/other_user}",
+    "user_view_type": "public",
+    "organizations_url": "https://api.github.com/users/octo-org/orgs",
+    "subscriptions_url": "https://api.github.com/users/octo-org/subscriptions",
+    "received_events_url": "https://api.github.com/users/octo-org/received_events"
+  },
+  "requester": null,
+  "installation": {
+    "id": 12345678,
+    "app_id": 5949582,
+    "events": ["deployment", "deployment_status", "workflow_run"],
+    "account": {
+      "id": 9919,
+      "url": "https://api.github.com/users/octo-org",
+      "type": "User",
+      "login": "octo-org",
+      "node_id": "U_kgDOAAAmvw",
+      "html_url": "https://github.com/octo-org",
+      "gists_url": "https://api.github.com/users/octo-org/gists{/gist_id}",
+      "repos_url": "https://api.github.com/users/octo-org/repos",
+      "avatar_url": "https://avatars.githubusercontent.com/u/9919?v=4",
+      "events_url": "https://api.github.com/users/octo-org/events{/privacy}",
+      "site_admin": false,
+      "gravatar_id": "",
+      "starred_url": "https://api.github.com/users/octo-org/starred{/owner}{/repo}",
+      "followers_url": "https://api.github.com/users/octo-org/followers",
+      "following_url": "https://api.github.com/users/octo-org/following{/other_user}",
+      "user_view_type": "public",
+      "organizations_url": "https://api.github.com/users/octo-org/orgs",
+      "subscriptions_url": "https://api.github.com/users/octo-org/subscriptions",
+      "received_events_url": "https://api.github.com/users/octo-org/received_events"
+    },
+    "app_slug": "forgeflow-staging",
+    "html_url": "https://github.com/settings/installations/12345678",
+    "client_id": "Iv23liLsMMLtmd2v0NTo",
+    "target_id": 9919,
+    "created_at": "2026-11-27T16:00:23.000+07:00",
+    "updated_at": "2026-11-27T16:00:24.000+07:00",
+    "permissions": {
+      "actions": "read",
+      "metadata": "read",
+      "deployments": "read"
+    },
+    "target_type": "User",
+    "suspended_at": null,
+    "suspended_by": null,
+    "repositories_url": "https://api.github.com/installation/repositories",
+    "single_file_name": null,
+    "access_tokens_url": "https://api.github.com/app/installations/12345678/access_tokens",
+    "single_file_paths": [],
+    "repository_selection": "selected",
+    "has_multiple_single_files": false
+  },
+  "repositories": [
+    {
+      "id": 1471514172,
+      "name": "forgeflow",
+      "node_id": "R_kgDOV7WGPA",
+      "private": false,
+      "full_name": "octo-org/forgeflow"
+    }
+  ]
+}

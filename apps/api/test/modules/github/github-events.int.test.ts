@@ -149,17 +149,17 @@ describe('deployment webhooks', () => {
       source: 'github',
       kind: 'deployment',
       externalId: String(deploymentId),
-      environmentName: 'production',
-      ref: 'v1.4.0',
-      version: 'v1.4.0',
+      environmentName: 'staging',
+      ref: 'main',
+      version: 'main',
       status: 'queued',
-      creator: 'octo-deployer',
+      creator: 'octo-org',
     });
-    const [production] = await database.db
+    const [staging] = await database.db
       .select()
       .from(environments)
-      .where(and(eq(environments.projectId, project.id), eq(environments.name, 'production')));
-    expect(row!.environmentId).toBe(production!.id);
+      .where(and(eq(environments.projectId, project.id), eq(environments.name, 'staging')));
+    expect(row!.environmentId).toBe(staging!.id);
 
     const statusId = uniqueNumber();
     const status = payload('deployment_status.created', { deploymentId, statusId });
@@ -169,10 +169,10 @@ describe('deployment webhooks', () => {
     [row] = await deploymentsOf(project.id);
     expect(row).toMatchObject({
       status: 'success',
-      url: 'https://github.com/acme/checkout/actions/runs/3001',
-      environmentUrl: 'https://checkout.acme.example',
+      url: 'https://github.com/octo-org/forgeflow/actions/runs/45968056076/job/140402916568',
+      environmentUrl: 'https://staging.example.com',
     });
-    expect(row!.finishedAt?.toISOString()).toBe('2026-11-20T08:04:30.000Z');
+    expect(row!.finishedAt?.toISOString()).toBe('2026-11-27T08:48:57.000Z');
     const events = await database.db
       .select()
       .from(deploymentEvents)
@@ -242,16 +242,16 @@ describe('deployment webhooks', () => {
       kind: 'workflow_run',
       environmentId: null,
       workflow: 'CI',
-      version: '#128',
+      version: '#21',
       status: 'success',
-      creator: 'octo-dev',
-      url: 'https://github.com/acme/checkout/actions/runs/3002',
+      creator: 'octo-org',
+      url: 'https://github.com/octo-org/forgeflow/actions/runs/45971931004',
     });
     const res = await client(app)
       .get(`/api/v1/organizations/${row!.organizationId}/projects/${project.id}/deployments`)
       .set('Authorization', bearer(owner))
       .expect(200);
-    expect(deploymentPageSchema.parse(res.body.data).deployments[0]!.durationSeconds).toBe(370);
+    expect(deploymentPageSchema.parse(res.body.data).deployments[0]!.durationSeconds).toBe(101);
   });
 
   it('ignores repositories mapped to no project, and installations no organization connected', async () => {
@@ -439,10 +439,10 @@ describe('GET /organizations/:orgId/projects/:projectId/deployments', () => {
 
     const all = await get({});
     expect(all.deployments.map((d) => d.createdAt.slice(0, 10))).toEqual([
+      '2026-11-27', // the Actions run
       '2026-11-23',
       '2026-11-22',
       '2026-11-21',
-      '2026-11-20',
     ]);
     expect((await get({ kind: 'workflow_run' })).deployments).toHaveLength(1);
     const staging = all.deployments.find((d) => d.environment?.name === 'staging')!;

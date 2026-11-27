@@ -138,26 +138,30 @@ Test nằm trong `apps/api/test/` và `apps/web/test/`, cùng cấu trúc với 
 
 `apps/web` dùng Next.js 16 (App Router), Tailwind CSS v4 và [shadcn/ui](https://ui.shadcn.com) (style `radix-nova`). Giao diện bằng tiếng Việt; font Inter có bộ ký tự tiếng Việt.
 
-| Trang                    | Nội dung                                                                   |
-| ------------------------ | -------------------------------------------------------------------------- |
-| `/login`                 | Đăng nhập bằng email + mật khẩu hoặc GitHub (nút chỉ hiện khi đã cấu hình) |
-| `/register`              | Tạo tài khoản                                                              |
-| `/forgot-password`       | Gửi link đặt lại mật khẩu                                                  |
-| `/reset-password`        | Mở từ email: đặt mật khẩu mới                                              |
-| `/verify-email`          | Mở từ email: xác minh email                                                |
-| `/`                      | Mở organization dùng gần nhất; chưa có org thì màn hình tạo org đầu tiên   |
-| `/orgs/new`              | Tạo organization                                                           |
-| `/orgs/[orgId]`          | Tổng quan organization (vai trò của bạn, trạng thái hệ thống)              |
-| `/orgs/[orgId]/members`  | Thành viên (đổi vai trò, xoá, rời) và lời mời (gửi, thu hồi)               |
-| `/orgs/[orgId]/settings` | Đổi tên, rời organization                                                  |
-| `/invitations/accept`    | Mở từ email mời: xem và nhận lời mời                                       |
-| `/account`               | Tài khoản (cần đăng nhập): thông tin, đổi mật khẩu, thiết bị đăng nhập     |
+| Trang                                | Nội dung                                                                   |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| `/login`                             | Đăng nhập bằng email + mật khẩu hoặc GitHub (nút chỉ hiện khi đã cấu hình) |
+| `/register`                          | Tạo tài khoản                                                              |
+| `/forgot-password`                   | Gửi link đặt lại mật khẩu                                                  |
+| `/reset-password`                    | Mở từ email: đặt mật khẩu mới                                              |
+| `/verify-email`                      | Mở từ email: xác minh email                                                |
+| `/`                                  | Mở organization dùng gần nhất; chưa có org thì màn hình tạo org đầu tiên   |
+| `/orgs/new`                          | Tạo organization                                                           |
+| `/orgs/[orgId]`                      | Tổng quan organization (vai trò của bạn, trạng thái hệ thống)              |
+| `/orgs/[orgId]/projects`             | Các project và environment của chúng; owner / admin tạo project            |
+| `/orgs/[orgId]/projects/[projectId]` | Một project: đổi tên; environment (thêm, đổi tên, bật / tắt bảo vệ)        |
+| `/orgs/[orgId]/members`              | Thành viên (đổi vai trò, xoá, rời) và lời mời (gửi, thu hồi)               |
+| `/orgs/[orgId]/audit`                | Nhật ký hoạt động (owner / admin)                                          |
+| `/orgs/[orgId]/settings`             | Đổi tên, rời organization                                                  |
+| `/invitations/accept`                | Mở từ email mời: xem và nhận lời mời                                       |
+| `/account`                           | Tài khoản (cần đăng nhập): thông tin, đổi mật khẩu, thiết bị đăng nhập     |
 
 - **Phiên đăng nhập** (`src/features/auth/auth-provider.tsx`): access token chỉ nằm trong bộ nhớ của tab, không lưu vào storage. Khi tải trang, web gọi `POST /api/v1/auth/refresh` (refresh cookie `HttpOnly`) để lấy lại; tự refresh 1 phút trước khi token hết hạn, và refresh rồi thử lại một lần khi API trả `401`.
   - Mỗi lần refresh thay cookie, nên chỉ một lần refresh chạy tại một thời điểm: trong một tab nhờ promise dùng chung, giữa các tab nhờ Web Locks API.
   - Đăng xuất / đăng nhập ở một tab được báo cho các tab khác qua `BroadcastChannel`.
   - Trang cần đăng nhập nằm trong `(app)/`; `RequireAuth` chuyển khách chưa đăng nhập tới `/login?next=…` (chỉ nhận đường dẫn trong site, chống open redirect).
 - **Link trong email**: trang đọc token sau `#`, xoá nó khỏi thanh địa chỉ và lịch sử rồi mới gọi API; các trang này đặt `Referrer-Policy: no-referrer`. Trang nhận lời mời giữ token trong `sessionStorage` của tab, nên token còn nguyên khi người được mời phải đăng nhập / đăng ký trước (trang đăng ký điền sẵn email được mời).
+- **Project** (`src/features/projects/`): danh sách project, trang một project với bảng environment. Tắt bảo vệ một environment phải xác nhận; trùng tên hiện ngay dưới ô nhập (`409 NAME_TAKEN`).
 - **Organization** (`src/features/organizations/`): danh sách org của user nạp một lần (`OrganizationsProvider`), header có ô chọn org; các trang `/orgs/[orgId]` chỉ hiện với thành viên (`OrganizationScope`). Nút và ô chọn vai trò chỉ hiện khi vai trò cho phép, theo cùng ma trận RBAC với api (`can`, `canManageMember`, `canAssignRole` trong `@forgeflow/contracts`); api vẫn kiểm tra mọi request.
 - **Thông báo**: form validate bằng chính schema zod trong `@forgeflow/contracts` (cùng quy tắc với api), nhưng thông báo tiếng Việt được dựng từ loại lỗi và tên trường (`src/features/auth/validation.ts`). Lỗi từ api được hiển thị theo mã lỗi (`src/features/auth/messages.ts`), không dùng câu tiếng Anh của api.
 - **Thêm component shadcn**: `cd apps/web && npx shadcn@latest add <tên>` (cấu hình ở `apps/web/components.json`), rồi chạy `npm run format`.

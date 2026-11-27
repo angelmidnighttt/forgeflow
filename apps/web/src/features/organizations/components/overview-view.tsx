@@ -1,7 +1,7 @@
 'use client';
 
 import { can } from '@forgeflow/contracts';
-import { Users } from 'lucide-react';
+import { FolderKanban, Users } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,25 @@ export function OverviewView() {
       <p className="-mt-4 text-sm text-muted-foreground">
         Xin chào{user.name ? `, ${user.name}` : ''}. Đây là trang tổng quan của organization.
       </p>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Project</CardTitle>
+          <CardDescription>
+            {can(organization.role, 'projects.manage')
+              ? 'Tạo project cho từng ứng dụng, chọn environment nào cần được bảo vệ.'
+              : 'Xem các project của organization và environment của chúng.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" asChild>
+            <Link href={`/orgs/${organization.id}/projects`}>
+              <FolderKanban />
+              {can(organization.role, 'projects.manage') ? 'Quản lý project' : 'Xem project'}
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -53,8 +72,8 @@ export function OverviewView() {
           <CardDescription>Các phần tiếp theo của ForgeFlow</CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          Dự án và môi trường, deployment, cảnh báo và sự cố sẽ xuất hiện ở đây trong các bản phát
-          hành tới.
+          Deployment, cảnh báo và sự cố của từng project sẽ xuất hiện ở đây trong các bản phát hành
+          tới.
         </CardContent>
       </Card>
 

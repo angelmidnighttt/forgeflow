@@ -25,6 +25,7 @@ export function AppHeader() {
     ...(organization
       ? [
           { href: `/orgs/${organization.id}`, label: 'Tổng quan' },
+          { href: `/orgs/${organization.id}/projects`, label: 'Project' },
           { href: `/orgs/${organization.id}/members`, label: 'Thành viên' },
           ...(can(organization.role, 'audit.read')
             ? [{ href: `/orgs/${organization.id}/audit`, label: 'Nhật ký' }]
@@ -34,6 +35,11 @@ export function AppHeader() {
       : []),
     { href: '/account', label: 'Tài khoản' },
   ];
+  // A section stays highlighted on its subpages (a project's page under Project); the overview,
+  // which every organization page is under, only on itself.
+  const overview = organization ? `/orgs/${organization.id}` : null;
+  const isCurrent = (href: string) =>
+    pathname === href || (href !== overview && pathname.startsWith(`${href}/`));
 
   return (
     <header className="border-b bg-background">
@@ -48,7 +54,7 @@ export function AppHeader() {
               href={item.href}
               className={cn(
                 'rounded-md px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground',
-                pathname === item.href && 'bg-muted font-medium text-foreground',
+                isCurrent(item.href) && 'bg-muted font-medium text-foreground',
               )}
             >
               {item.label}

@@ -21,6 +21,7 @@ const MESSAGES: Partial<Record<string, string>> = {
     'Organization cần ít nhất một chủ sở hữu. Hãy cho người khác làm chủ sở hữu trước.',
   [ErrorCode.AlreadyMember]: 'Người này đã là thành viên của organization.',
   [ErrorCode.InvitationEmailMismatch]: 'Lời mời này được gửi tới một email khác.',
+  [ErrorCode.NameTaken]: 'Tên này đã được dùng.',
   [ErrorCode.Unauthorized]: 'Phiên đăng nhập đã hết. Hãy đăng nhập lại.',
   [ErrorCode.TokenExpired]: 'Phiên đăng nhập đã hết. Hãy đăng nhập lại.',
   [ErrorCode.OriginNotAllowed]: 'Yêu cầu bị chặn vì không được gửi từ trang ForgeFlow.',

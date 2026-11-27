@@ -87,11 +87,15 @@ EOF
   systemctl enable --now docker > /dev/null 2>&1
 
   step 'Firewall: SSH, HTTP and HTTPS only'
+  # sshd -T / -t need this directory. ssh.service creates it, but Ubuntu starts that service on
+  # demand (ssh.socket), and an openssh-server upgrade just above can leave it stopped.
+  install -d -m 0755 /run/sshd
   local ssh_ports port
-  ssh_ports=$(sshd -T 2> /dev/null | awk '$1 == "port" { print $2 }')
+  ssh_ports=$(sshd -T | awk '$1 == "port" { print $2 }') && [[ -n $ssh_ports ]] ||
+    fail 'could not read the SSH port from sshd -T; the firewall is unchanged'
   ufw default deny incoming > /dev/null
   ufw default allow outgoing > /dev/null
-  for port in ${ssh_ports:-22}; do ufw allow "$port/tcp" > /dev/null; done
+  for port in $ssh_ports; do ufw allow "$port/tcp" > /dev/null; done
   ufw allow 80/tcp > /dev/null
   ufw allow 443/tcp > /dev/null
   ufw allow 443/udp > /dev/null
@@ -112,7 +116,8 @@ EOF
       rm -f "$conf"
       fail 'sshd rejected the new settings; removed them, password logins stay on'
     }
-    systemctl reload ssh.service 2> /dev/null || systemctl restart ssh.service
+    # A stopped ssh.service reads the settings when the next connection starts it.
+    if systemctl is-active --quiet ssh.service; then systemctl reload ssh.service; fi
     echo 'Password logins are off.'
   else
     echo '!! No SSH key is set up for root: password logins stay on.'

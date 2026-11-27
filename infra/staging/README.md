@@ -69,7 +69,12 @@ Muốn bật "Đăng nhập bằng GitHub" thì tạo một OAuth app riêng cho
 **6. Cấu hình GitHub** (bằng `gh`, đứng trong repo):
 
 ```bash
-gh api -X PUT "repos/{owner}/{repo}/environments/staging" > /dev/null
+# Environment chỉ nhận deploy từ nhánh main
+gh api -X PUT "repos/{owner}/{repo}/environments/staging" \
+  -F "deployment_branch_policy[protected_branches]=false" \
+  -F "deployment_branch_policy[custom_branch_policies]=true" > /dev/null
+gh api -X POST "repos/{owner}/{repo}/environments/staging/deployment-branch-policies" \
+  -f name=main -f type=branch > /dev/null
 gh secret set DEPLOY_SSH_KEY --env staging < ~/.ssh/forgeflow_deploy
 ssh-keyscan -t ed25519 <IP> | gh secret set DEPLOY_SSH_KNOWN_HOSTS --env staging
 gh variable set DEPLOY_SSH_HOST --env staging --body <IP>

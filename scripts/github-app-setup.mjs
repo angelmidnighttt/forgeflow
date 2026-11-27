@@ -230,7 +230,7 @@ mv "$next" "$f"
 echo "Updated $f: ${Object.keys(values).join(', ')}"
 ${
   deploy
-    ? `runuser -u deploy -- bash /opt/forgeflow/repo/infra/staging/scripts/deploy.sh "$(cat /opt/forgeflow/deployed-version)"`
+    ? `cd /opt/forgeflow && runuser -u deploy -- bash /opt/forgeflow/repo/infra/staging/scripts/deploy.sh "$(cat /opt/forgeflow/deployed-version)"`
     : ''
 }
 `;

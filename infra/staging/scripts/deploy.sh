@@ -12,6 +12,9 @@ set -euo pipefail
 export FORGEFLOW_VERSION=${1:?usage: deploy.sh <commit-sha>}
 root=${FORGEFLOW_ROOT:-/opt/forgeflow}
 scripts=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+# Work from a directory deploy can read: run by hand through runuser from root's home, the
+# working directory stays /root, and docker compose fails with "stat .: permission denied".
+cd "$root"
 
 compose() { bash "$scripts/compose.sh" "$@"; }
 step() { printf '==> %s\n' "$*"; }

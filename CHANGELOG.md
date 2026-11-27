@@ -2,6 +2,33 @@
 
 Mọi thay đổi đáng chú ý của ForgeFlow được ghi ở đây. Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [v0.2] — 2026-11-27
+
+GitHub App và theo dõi deployment: mỗi project có một dòng thời gian deploy và lần chạy CI, lấy từ GitHub hoặc do pipeline bất kỳ báo lên qua API.
+
+### Thêm
+
+- **Integration và secret mã hoá envelope**: kết nối của org tới hệ thống ngoài; mỗi phiên bản secret được mã hoá AES-256-GCM bằng khoá dữ liệu riêng, khoá chính có phiên bản (`SECRET_ENCRYPTION_KEYS`, xoay bằng `npm run secrets:rewrap`). API không bao giờ trả secret.
+- **GitHub App** (chỉ đọc Deployments, Actions, Metadata): kết nối từ trang Tích hợp, ForgeFlow kiểm tra bản cài đặt đúng là của người bấm; mỗi bản cài đặt thuộc một org; gỡ / tạm ngưng App trên GitHub thì integration tự tắt. Gắn repository vào project, lịch sử gần đây được lấy về ngay.
+- `npm run github:app`: tạo GitHub App bằng một cú bấm (App Manifest flow) và ghi 6 biến `GITHUB_APP_*` vào `.env` local hoặc của server qua SSH.
+- **Webhook GitHub** (`POST /api/v1/webhooks/github`): kiểm chữ ký HMAC trên đúng byte nhận được, khử trùng theo `X-GitHub-Delivery`, trả `202` ngay.
+- **Worker và transactional outbox**: việc nền được ghi cùng transaction với thay đổi sinh ra nó; worker nhận việc bằng `SKIP LOCKED` với lease gia hạn và fencing token, thử lại có backoff, dừng thử sau 8 lần; owner / admin xem và chạy lại việc lỗi. Mỗi 10 phút worker đối chiếu với GitHub để bù webhook bị lỡ.
+- **Deployment**: `deployment`, `deployment_status`, `workflow_run` của GitHub thành deployment và lần chạy CI của project; ghi idempotent, trạng thái cũ đến muộn không ghi đè trạng thái mới; environment chưa có thì tự thêm. Trang Deployment lọc theo environment, loại, trạng thái.
+- **Report API** cho pipeline không dùng GitHub Deployments: API token theo project (chỉ lưu hash, hiện một lần, có hạn, thu hồi được), `POST /api/v1/deployments` bắt buộc `Idempotency-Key`, `PATCH` để báo kết quả; `tools/report-deployment.sh` (sh + curl) và action `.github/actions/report-deployment`.
+- Hướng dẫn người dùng trong `guides/`; mẫu repo demo trong `examples/demo-app`.
+- Staging chạy thêm service `worker`.
+
+### Thay đổi
+
+- Log không còn ghi giá trị `code`, `state`, token trong query string (callback OAuth của đăng nhập GitHub và của luồng cài App).
+- `deploy.sh` chạy được khi gọi tay qua `runuser` từ thư mục của root.
+- README chỉ còn ở máy người bảo trì cho tới bản MVP.
+
+### Cần làm khi nâng cấp server
+
+- Thêm `SECRET_ENCRYPTION_KEYS` vào `.env` trước khi deploy (thiếu thì deploy dừng), và sao lưu nó tách khỏi bản dump DB.
+- Tuỳ chọn: `npm run github:app -- --origin https://<host> --ssh root@<server> --deploy` để bật GitHub App.
+
 ## [v0.1] — 2026-11-27
 
 Tài khoản và multi-tenant: người dùng đăng ký, tạo organization, mời đồng đội, phân quyền và tạo project; dữ liệu giữa các organization được cách ly ở cả tầng app lẫn PostgreSQL.
@@ -44,5 +71,6 @@ Walking skeleton: nền móng chạy được ở local và trên CI. Chưa có 
 - ESLint, Prettier, Jest ở chế độ ESM (`@swc/jest`); test nằm trong thư mục `test/` của từng package.
 - Dockerfile multi-stage cho api và web; CI trên GitHub Actions (lint, typecheck, test, migration, build image).
 
+[v0.2]: https://github.com/angelmidnighttt/forgeflow/compare/v0.1...v0.2
 [v0.1]: https://github.com/angelmidnighttt/forgeflow/compare/v0.0...v0.1
 [v0.0]: https://github.com/angelmidnighttt/forgeflow/tree/v0.0

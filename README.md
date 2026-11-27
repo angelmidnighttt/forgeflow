@@ -41,23 +41,24 @@ Nếu cổng đã bị chiếm, đặt cổng khác trước khi chạy và sử
 
 ## Script
 
-| Lệnh                                      | Việc làm                                                                                    |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `npm run dev`                             | Chạy toàn bộ môi trường local                                                               |
-| `npm run build`                           | Build packages, api và web                                                                  |
-| `npm run typecheck`                       | Kiểm tra kiểu toàn repo, gồm cả code test                                                   |
-| `npm run lint`                            | ESLint                                                                                      |
-| `npm run format` / `format:check`         | Prettier                                                                                    |
-| `npm test`                                | Build rồi chạy Jest (unit + integration, cần `db:up`)                                       |
-| `npm run test:unit`                       | Chỉ chạy unit test, không cần dịch vụ ngoài                                                 |
-| `npm run db:up` / `db:down`               | Bật / tắt PostgreSQL và Mailpit local                                                       |
-| `npm run db:app-role`                     | Tạo / cập nhật role `forgeflow_app` ở local (chạy lại an toàn)                              |
-| `npm run db:generate`                     | Sinh migration từ schema Drizzle (`drizzle-kit generate`)                                   |
-| `npm run db:migrate`                      | Áp dụng migration (chạy lặp lại an toàn)                                                    |
-| `npm run db:reset`                        | Xoá sạch và migrate lại — chỉ chạy được với DB localhost                                    |
-| `npm run db:seed`                         | Nạp dữ liệu mẫu                                                                             |
-| `npm run secrets:rewrap`                  | Chuyển mọi secret của integration sang khoá mã hoá mới nhất (xoay `SECRET_ENCRYPTION_KEYS`) |
-| `npm run github:replay -- <event> <file>` | Gửi một webhook GitHub có ký tới api local (thử GitHub App không cần GitHub)                |
+| Lệnh                                                                        | Việc làm                                                                                                         |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                                               | Chạy toàn bộ môi trường local                                                                                    |
+| `npm run build`                                                             | Build packages, api và web                                                                                       |
+| `npm run typecheck`                                                         | Kiểm tra kiểu toàn repo, gồm cả code test                                                                        |
+| `npm run lint`                                                              | ESLint                                                                                                           |
+| `npm run format` / `format:check`                                           | Prettier                                                                                                         |
+| `npm test`                                                                  | Build rồi chạy Jest (unit + integration, cần `db:up`)                                                            |
+| `npm run test:unit`                                                         | Chỉ chạy unit test, không cần dịch vụ ngoài                                                                      |
+| `npm run db:up` / `db:down`                                                 | Bật / tắt PostgreSQL và Mailpit local                                                                            |
+| `npm run db:app-role`                                                       | Tạo / cập nhật role `forgeflow_app` ở local (chạy lại an toàn)                                                   |
+| `npm run db:generate`                                                       | Sinh migration từ schema Drizzle (`drizzle-kit generate`)                                                        |
+| `npm run db:migrate`                                                        | Áp dụng migration (chạy lặp lại an toàn)                                                                         |
+| `npm run db:reset`                                                          | Xoá sạch và migrate lại — chỉ chạy được với DB localhost                                                         |
+| `npm run db:seed`                                                           | Nạp dữ liệu mẫu                                                                                                  |
+| `npm run secrets:rewrap`                                                    | Chuyển mọi secret của integration sang khoá mã hoá mới nhất (xoay `SECRET_ENCRYPTION_KEYS`)                      |
+| `npm run github:app -- --origin <url> --ssh <user@host> \| --env-file .env` | Tạo GitHub App bằng một cú bấm (App Manifest flow) và ghi 6 biến `GITHUB_APP_*` vào `.env` của server hoặc local |
+| `npm run github:replay -- <event> <file>`                                   | Gửi một webhook GitHub có ký tới api local (thử GitHub App không cần GitHub)                                     |
 
 ## Cấu trúc
 
@@ -368,7 +369,7 @@ Việc không nên chạy trong request (xử lý webhook, gọi GitHub, sau nà
 
 ## GitHub App
 
-ForgeFlow theo dõi deployment qua một **GitHub App** (không phải OAuth app đăng nhập): org cài App vào tài khoản / organization GitHub của họ, chọn repository, ForgeFlow nhận webhook và đọc API của GitHub bằng token của bản cài đặt đó. App chỉ cần quyền **đọc**. Đăng ký App và đặt biến môi trường: [infra/staging/README.md](infra/staging/README.md#github-app). Không đặt 6 biến `GITHUB_APP_*` thì tính năng tắt (`GET /github/app` trả `configured: false`, nút kết nối không hiện).
+ForgeFlow theo dõi deployment qua một **GitHub App** (không phải OAuth app đăng nhập): org cài App vào tài khoản / organization GitHub của họ, chọn repository, ForgeFlow nhận webhook và đọc API của GitHub bằng token của bản cài đặt đó. App chỉ cần quyền **đọc**. Đăng ký App và đặt biến môi trường: `npm run github:app` (tạo App bằng một cú bấm trên GitHub rồi ghi các biến; xem [infra/staging/README.md](infra/staging/README.md#github-app)). Không đặt 6 biến `GITHUB_APP_*` thì tính năng tắt (`GET /github/app` trả `configured: false`, nút kết nối không hiện).
 
 - **Kết nối** (owner / admin, trang **Tích hợp**): `POST …/integrations/github/install` trả link cài App kèm `state` (JWT ngắn hạn) và đặt cookie `ff_github` cho cùng trình duyệt. GitHub đưa trình duyệt về `GET /api/v1/github/setup`, api kiểm tra: `state` và cookie khớp; đổi `code` (App bật "Request user authorization during installation") lấy token của người dùng GitHub và xác nhận bản cài đặt nằm trong `/user/installations` của **chính người đó** (không thể nhận bản cài đặt của người khác bằng cách đoán `installation_id`); người bấm vẫn còn quyền `integrations.manage`. Rồi mới tạo integration và nạp danh sách repository. Lỗi nào cũng quay về trang Tích hợp với `?github_error=<mã>`.
 - **Một bản cài đặt thuộc một org** (`unique (kind, external_id)`); kết nối lại cùng tài khoản GitHub thì dùng lại integration cũ.
@@ -389,7 +390,7 @@ Owner / admin xem các delivery gần đây của một bản cài đặt ở tr
 
 **Thử ở local**: GitHub không gọi được `localhost`, nên hoặc:
 
-- Mở tunnel tới api và đặt webhook URL của App (bản dev riêng) là địa chỉ tunnel + `/api/v1/webhooks/github`: `npx smee-client --url https://smee.io/<kênh> --target http://localhost:4000/api/v1/webhooks/github`, hoặc `cloudflared tunnel --url http://localhost:4000`. Callback URL của App vẫn là `http://localhost:3000/api/v1/github/setup` (trình duyệt của bạn mở nó, không cần tunnel).
+- Tạo một App dev riêng, webhook qua tunnel: `npm run github:app -- --origin http://localhost:3000 --env-file .env --webhook-url https://smee.io/<kênh>` (tạo kênh ở https://smee.io), rồi khởi động lại `npm run dev`. Script ghi 6 biến vào `.env` và in lệnh chạy tunnel. Hoặc tự mở tunnel tới api và đặt webhook URL của App là địa chỉ tunnel + `/api/v1/webhooks/github`: `npx smee-client --url https://smee.io/<kênh> --target http://localhost:4000/api/v1/webhooks/github`, hoặc `cloudflared tunnel --url http://localhost:4000`. Callback URL của App vẫn là `http://localhost:3000/api/v1/github/setup` (trình duyệt của bạn mở nó, không cần tunnel).
 - Hoặc không cần GitHub: gửi lại payload mẫu có ký bằng `GITHUB_APP_WEBHOOK_SECRET` trong `.env`: `npm run github:replay -- deployment apps/api/test/fixtures/github/deployment.created.json --installation <id>` (`--times 3` gửi cùng một delivery ba lần để xem khử trùng).
 
 | Endpoint                                                         | Quyền cần             | Việc làm                                   |

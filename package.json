@@ -28,6 +28,7 @@
     "db:reset": "npm run reset -w @forgeflow/database",
     "db:seed": "npm run seed -w @forgeflow/database",
     "secrets:rewrap": "npm run secrets:rewrap -w @forgeflow/api",
+    "github:app": "node scripts/github-app-setup.mjs",
     "github:replay": "node scripts/github-webhook-replay.mjs",
     "clean": "rimraf --glob \"apps/*/dist\" \"packages/*/dist\" \"apps/web/.next\""
   },

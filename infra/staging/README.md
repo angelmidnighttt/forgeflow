@@ -99,7 +99,27 @@ Sau đó mở `https://<HOST>`. Lần đầu, Caddy mất vài giây để lấy
 
 Không bắt buộc: thiếu các biến `GITHUB_APP_*` thì ForgeFlow chạy bình thường, chỉ không có nút "Kết nối GitHub". Mỗi môi trường (staging, sau này production, máy dev) dùng **một App riêng**, vì mỗi App chỉ có một webhook URL.
 
-**1. Tạo App** tại https://github.com/settings/apps/new (hoặc `https://github.com/organizations/<org>/settings/apps/new` để App thuộc một organization GitHub):
+**1. Tạo App bằng script** (cần Node 22 trên máy bạn, chạy ở thư mục gốc của repo):
+
+```bash
+npm run github:app -- --origin https://<HOST> --ssh root@<IP> --deploy
+```
+
+[`scripts/github-app-setup.mjs`](../../scripts/github-app-setup.mjs) dùng [App Manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest) của GitHub:
+
+1. Mở trình duyệt tới một trang local, trang này gửi cấu hình App (quyền, event, URL ở bảng dưới) sang GitHub.
+2. Bạn kiểm tra tên rồi bấm **Create GitHub App**. Tên App là duy nhất trên GitHub: nếu đã có người dùng, sửa ngay trên trang đó, hoặc chạy lại với `--name`.
+3. GitHub đưa trình duyệt về script với một mã dùng một lần. Script đổi mã lấy App ID, slug, private key, webhook secret, client ID và client secret.
+4. Script ghi 6 biến `GITHUB_APP_*` vào `/opt/forgeflow/.env` qua SSH (truyền qua stdin, giữ nguyên chủ sở hữu và mode của file), rồi deploy lại phiên bản đang chạy (`--deploy`).
+
+Không giá trị bí mật nào được in ra hay lưu trên máy bạn; private key đi thẳng từ GitHub lên server.
+
+- `--org <login>`: App thuộc một organization GitHub thay vì tài khoản của bạn.
+- `--private`: chỉ cài được lên tài khoản sở hữu App (mặc định: mọi tài khoản, để người khác cũng thử được).
+- `--ssh-port <port>` khi SSH không ở cổng 22; bỏ `--deploy` nếu muốn tự deploy sau.
+- Chỉ có tác dụng khi server chạy bản có Phase 2 (từ `main` sau khi merge). Chạy trước cũng được: biến nằm sẵn trong `.env`, chờ bản mới.
+
+**Làm tay** (khi không chạy được script): tạo App tại https://github.com/settings/apps/new (hoặc `https://github.com/organizations/<org>/settings/apps/new`) với:
 
 | Trường                                                 | Giá trị                                                                            |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
@@ -118,13 +138,7 @@ Không bắt buộc: thiếu các biến `GITHUB_APP_*` thì ForgeFlow chạy b�
 
 `installation` và `installation_repositories` luôn được gửi tới mọi GitHub App, không cần đăng ký.
 
-**2. Lấy thông tin**, ở trang của App vừa tạo:
-
-- **App ID** và **Client ID** (đầu trang). Slug nằm trong địa chỉ `https://github.com/apps/<slug>`.
-- **Generate a new client secret**: chép ngay, GitHub chỉ hiện một lần.
-- **Generate a private key**: trình duyệt tải về `<slug>.<ngày>.private-key.pem`.
-
-**3. Đưa vào `.env` của server.** Private key đi thẳng từ máy bạn lên server, không qua đâu khác:
+Rồi lấy thông tin ở trang của App: **App ID**, **Client ID** (đầu trang), slug (trong địa chỉ `https://github.com/apps/<slug>`); **Generate a new client secret** (chép ngay, chỉ hiện một lần); **Generate a private key** (tải về file `.pem`). Private key đi thẳng từ máy bạn lên server:
 
 ```bash
 scp ~/Downloads/<slug>.*.private-key.pem root@<IP>:/root/github-app.pem
@@ -134,9 +148,9 @@ ssh root@<IP> 'set -e; f=/opt/forgeflow/.env
   shred -u /root/github-app.pem'
 ```
 
-Rồi `nano /opt/forgeflow/.env` điền năm biến còn lại: `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` (thiếu một biến thì api không khởi động và báo tên biến). Xoá file `.pem` trên máy bạn nếu không cần giữ. Cuối cùng deploy lại đúng phiên bản đang chạy (xem "Đổi `.env`" ở dưới).
+`nano /opt/forgeflow/.env` điền năm biến còn lại (`GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`; thiếu một biến thì api không khởi động và báo tên biến), xoá file `.pem` trên máy bạn, rồi deploy lại (xem "Đổi `.env`" ở dưới).
 
-**4. Thử.** Đăng nhập ForgeFlow → **Tích hợp** → **Kết nối GitHub** → chọn repository trên GitHub → quay về ForgeFlow, gắn repository vào một project. Một job Actions có `environment:` (hoặc bất kỳ GitHub Deployment nào) sẽ hiện ở trang **Deployment** của project. Trang **Advanced** của App trên GitHub liệt kê từng lần gửi webhook và câu trả lời (`202`), có nút **Redeliver**.
+**2. Thử.** Đăng nhập ForgeFlow → **Tích hợp** → **Kết nối GitHub** → chọn repository trên GitHub → quay về ForgeFlow, gắn repository vào một project. Một job Actions có `environment:` (hoặc bất kỳ GitHub Deployment nào) sẽ hiện ở trang **Deployment** của project. Trang **Advanced** của App trên GitHub liệt kê từng lần gửi webhook và câu trả lời (`202`), có nút **Redeliver**.
 
 ## Hằng ngày
 

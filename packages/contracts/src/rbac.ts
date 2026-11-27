@@ -5,7 +5,7 @@ import { z } from 'zod';
  * - owner: everything, including managing admins and other owners. An organization always has
  *   at least one.
  * - admin: manages the organization and its members and viewers.
- * - member: works in the organization (later: projects, deployments, incidents).
+ * - member: works in the organization's projects (later: deployments, incidents).
  * - viewer: read-only.
  */
 export const ORGANIZATION_ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
@@ -26,6 +26,14 @@ export const PERMISSIONS = {
   'members.read': ALL_ROLES,
   'members.manage': MANAGERS,
   'invitations.manage': MANAGERS,
+  'projects.read': ALL_ROLES,
+  /** Create and rename projects; add and rename their environments. */
+  'projects.manage': MANAGERS,
+  /**
+   * Protect or unprotect an environment. Separate from projects.manage because protection
+   * decides who must approve changes to production (Phase 6).
+   */
+  'environments.protect': MANAGERS,
 } as const satisfies Record<string, readonly OrganizationRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

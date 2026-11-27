@@ -2,9 +2,11 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import {
   createDatabase,
+  environments,
   invitations,
   memberships,
   organizations,
+  projects,
   roleBypassesRowLevelSecurity,
   type DatabaseHandle,
   type User,
@@ -103,7 +105,13 @@ describe('every tenant table', () => {
       ORDER BY c.relname`);
 
     expect(tables.rows.map((t) => t.relname)).toEqual(
-      expect.arrayContaining(['invitations', 'memberships', 'organizations']),
+      expect.arrayContaining([
+        'environments',
+        'invitations',
+        'memberships',
+        'organizations',
+        'projects',
+      ]),
     );
     for (const table of tables.rows) {
       expect({
@@ -246,5 +254,79 @@ describe('the system path for invitation links', () => {
         app_can_execute: true,
       },
     ]);
+  });
+});
+
+describe('projects and environments', () => {
+  let projectA: string;
+  let projectB: string;
+
+  beforeAll(async () => {
+    projectA = randomUUID();
+    projectB = randomUUID();
+    await owner.db.insert(projects).values([
+      { id: projectA, organizationId: orgA, name: 'RLS project' },
+      { id: projectB, organizationId: orgB, name: 'RLS project' },
+    ]);
+    await owner.db.insert(environments).values([
+      { organizationId: orgA, projectId: projectA, name: 'production', position: 0 },
+      { organizationId: orgB, projectId: projectB, name: 'production', position: 0 },
+    ]);
+  });
+
+  it("are read only in their organization's context", async () => {
+    expect(await app.db.select().from(projects)).toEqual([]);
+    expect(await app.db.select().from(environments)).toEqual([]);
+
+    const inA = await app.withTenant({ organizationId: orgA }, async (tx) => ({
+      projects: await tx.select().from(projects),
+      environments: await tx.select().from(environments),
+    }));
+    expect(inA.projects.map((p) => p.id)).toEqual([projectA]);
+    expect(inA.environments.map((e) => e.projectId)).toEqual([projectA]);
+
+    // A user's own context reaches their memberships, not their organizations' projects.
+    expect(await app.withTenant({ userId: alice.id }, (tx) => tx.select().from(projects))).toEqual(
+      [],
+    );
+  });
+
+  it("cannot be written into another organization's project", async () => {
+    // Labelled with the other organization: row-level security refuses it.
+    const relabelled = await app
+      .withTenant({ organizationId: orgA }, (tx) =>
+        tx
+          .insert(environments)
+          .values({ organizationId: orgB, projectId: projectB, name: 'sneaky', position: 9 }),
+      )
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(relabelled)).toBe('42501');
+
+    // Labelled with its own organization but pointing at the other's project: the composite
+    // foreign key refuses it.
+    const crossLinked = await app
+      .withTenant({ organizationId: orgA }, (tx) =>
+        tx
+          .insert(environments)
+          .values({ organizationId: orgA, projectId: projectB, name: 'sneaky', position: 9 }),
+      )
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(crossLinked)).toBe('23503');
+  });
+
+  it('cannot point an environment at a project of another organization, even bypassing RLS', async () => {
+    // The owner bypasses row-level security; the composite foreign key still holds.
+    const error = await owner.db
+      .insert(environments)
+      .values({ organizationId: orgA, projectId: projectB, name: 'cross', position: 1 })
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(error)).toBe('23503');
+
+    const moved = await owner.db
+      .update(environments)
+      .set({ organizationId: orgA })
+      .where(eq(environments.projectId, projectB))
+      .catch((e: unknown) => e);
+    expect(pgErrorCode(moved)).toBe('23503');
   });
 });

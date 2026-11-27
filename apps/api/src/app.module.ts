@@ -16,6 +16,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
+import { ProjectsModule } from './modules/projects/projects.module.js';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
@@ -50,6 +51,7 @@ export class AppModule {
         UsersModule,
         AuthModule,
         OrganizationsModule,
+        ProjectsModule,
         HealthModule,
         ...extraImports,
       ],

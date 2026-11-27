@@ -268,19 +268,41 @@ Mọi thứ ForgeFlow quản lý thuộc về một organization (tenant). Một
 
 **Vai trò** (cao xuống thấp): `owner`, `admin`, `member`, `viewer`. Ma trận vai trò × quyền nằm ở `packages/contracts/src/rbac.ts` (`PERMISSIONS`, `can`), dùng chung cho api và web:
 
-| Quyền                 | owner | admin | member | viewer |
-| --------------------- | ----- | ----- | ------ | ------ |
-| `organization.read`   | ✓     | ✓     | ✓      | ✓      |
-| `organization.update` | ✓     | ✓     |        |        |
-| `members.read`        | ✓     | ✓     | ✓      | ✓      |
-| `members.manage`      | ✓     | ✓     |        |        |
-| `invitations.manage`  | ✓     | ✓     |        |        |
+| Quyền                  | owner | admin | member | viewer |
+| ---------------------- | ----- | ----- | ------ | ------ |
+| `organization.read`    | ✓     | ✓     | ✓      | ✓      |
+| `organization.update`  | ✓     | ✓     |        |        |
+| `members.read`         | ✓     | ✓     | ✓      | ✓      |
+| `members.manage`       | ✓     | ✓     |        |        |
+| `invitations.manage`   | ✓     | ✓     |        |        |
+| `projects.read`        | ✓     | ✓     | ✓      | ✓      |
+| `projects.manage`      | ✓     | ✓     |        |        |
+| `environments.protect` | ✓     | ✓     |        |        |
 
 - **Thứ bậc**: owner đổi vai trò / xoá / mời được mọi vai trò (kể cả owner khác). Admin chỉ quản lý và chỉ cấp được `member`, `viewer` — không đụng được admin khác hay owner. Ai cũng tự rời org được.
 - **Luôn còn ít nhất 1 owner**: hạ quyền hay xoá owner cuối cùng → `409 LAST_OWNER`. Mỗi thay đổi khoá dòng org (`SELECT … FOR UPDATE`) và đọc lại vai trò người thực hiện trong transaction, nên hai owner hạ quyền nhau cùng lúc cũng không làm org mất owner.
 - **Kiểm tra quyền** (`OrgPermissionGuard`, guard toàn cục cho route có `@RequirePermission`): org lấy từ `:orgId` trên URL, vai trò lấy từ bảng `memberships` ở **mỗi request** — không từ token, không từ body. Không phải thành viên (hoặc org không tồn tại, id sai định dạng) → `404` giống nhau; thiếu quyền → `403 ROLE_NOT_ALLOWED`. Bị xoá khỏi org là mất quyền ngay.
 - **Lời mời**: link `<APP_ORIGIN>/invitations/accept#token=…` (token sau `#`, DB chỉ lưu hash), dùng một lần, hết hạn sau 7 ngày. Mỗi email chỉ có một lời mời đang chờ trong một org: mời lại thì link cũ hết hiệu lực. Không gửi được email → `503` và lời mời bị huỷ. Nhận lời mời đánh dấu email đã xác minh (link chứng minh hộp thư); người đã là thành viên giữ nguyên vai trò.
 - Thử bằng REST Client: `apps/api/http/organizations.http`.
+
+## Project và environment
+
+Project là một ứng dụng / dịch vụ mà org vận hành; environment là nơi project chạy. Sau này deployment, incident đều gắn với project và environment.
+
+| Endpoint (dưới `/api/v1/organizations/:orgId`)           | Quyền cần         | Việc làm                                                |
+| -------------------------------------------------------- | ----------------- | ------------------------------------------------------- |
+| `POST /projects`                                         | `projects.manage` | Tạo project, kèm `development`, `staging`, `production` |
+| `GET /projects`                                          | `projects.read`   | Các project theo tên, mỗi project kèm environment       |
+| `GET /projects/:projectId`                               | `projects.read`   | Xem một project                                         |
+| `PATCH /projects/:projectId`                             | `projects.manage` | Đổi tên                                                 |
+| `POST /projects/:projectId/environments`                 | `projects.manage` | Thêm environment (xếp sau các environment khác)         |
+| `PATCH /projects/:projectId/environments/:environmentId` | `projects.manage` | Đổi tên và / hoặc bật tắt `protected`                   |
+
+- **Protected**: environment được bảo vệ sẽ cần duyệt trước khi ForgeFlow thay đổi nó (Phase 6). `production` được bảo vệ ngay khi tạo project. Bật / tắt `protected` (kể cả khi thêm environment với `"protected": true`) cần thêm quyền `environments.protect`.
+- **Tên** không trùng (không phân biệt hoa thường): project trong cùng org, environment trong cùng project. Trùng → `409 NAME_TAKEN` kèm `details.field = "name"`.
+- **Thứ tự environment**: theo cột `position` (development → staging → production → các environment thêm sau). Thêm environment khoá dòng project trong transaction, nên thêm đồng thời vẫn không trùng vị trí.
+- Chưa có xoá project / environment: sẽ làm cùng audit log.
+- Thử bằng REST Client: `apps/api/http/projects.http`.
 
 ## Cơ sở dữ liệu và cách ly tenant (RLS)
 
@@ -294,9 +316,9 @@ Dữ liệu tenant được cách ly hai lớp: tầng app kiểm tra membership
 - api **từ chối khởi động** nếu `DATABASE_URL` là superuser hoặc role có `BYPASSRLS`.
 - Migration cấp quyền cho `forgeflow_app` nhưng không đặt mật khẩu. Ở local, role đăng nhập được tạo bởi `infra/compose/postgres/init/01-app-role.sql` (Postgres chạy khi tạo volume; volume cũ: `npm run db:app-role`); CI chạy cùng file đó; trên server (`infra/staging`), mỗi lần deploy chạy lại file này với mật khẩu lấy từ `APP_DB_PASSWORD` (biến `FORGEFLOW_APP_DB_PASSWORD` của psql; không đặt thì mặc định là `forgeflow_app`).
 - **Truy vấn bảng tenant phải chạy trong `database.withTenant({ organizationId, userId }, (tx) => …)`**: mở transaction và đặt `app.organization_id` / `app.user_id` (chỉ trong transaction). Không có context thì policy không khớp dòng nào.
-- Policy hiện có: `organizations`, `memberships`, `invitations` đọc / ghi theo org trong context; user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
+- Policy hiện có: `organizations`, `memberships`, `invitations`, `projects`, `environments` đọc / ghi theo org trong context; user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
 - Luồng chưa biết org (xem / nhận lời mời theo token) dùng hàm `SECURITY DEFINER` hẹp (`forgeflow_invitation_organization`) chỉ trả org id, rồi chạy phần còn lại trong `withTenant`.
-- **Thêm bảng tenant mới**: cột `organization_id NOT NULL`; trong một migration viết tay (`cd packages/database && npx drizzle-kit generate --custom --name <tên>`): `ENABLE` + `FORCE ROW LEVEL SECURITY` và policy theo `forgeflow_current_organization_id()`; composite FK `(organization_id, …)` tới bảng cha. Test catalog sẽ đỏ nếu quên bật RLS.
+- **Thêm bảng tenant mới**: cột `organization_id NOT NULL`; trong một migration viết tay (`cd packages/database && npx drizzle-kit generate --custom --name <tên>`): `ENABLE` + `FORCE ROW LEVEL SECURITY` và policy theo `forgeflow_current_organization_id()`; composite FK `(organization_id, …)` tới bảng cha (bảng cha có `UNIQUE (organization_id, id)`; ví dụ `environments` → `projects`). Test catalog sẽ đỏ nếu quên bật RLS.
 
 ## Docker image
 

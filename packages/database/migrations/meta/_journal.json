@@ -64,6 +64,20 @@
       "when": 1795742610541,
       "tag": "0008_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795754096031,
+      "tag": "0009_projects",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795754101537,
+      "tag": "0010_projects_row_level_security",
+      "breakpoints": true
     }
   ]
 }

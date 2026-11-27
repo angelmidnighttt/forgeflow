@@ -28,6 +28,11 @@ export const ErrorCode = {
   AlreadyMember: 'ALREADY_MEMBER',
   /** The invitation was sent to another email than the signed-in user's. */
   InvitationEmailMismatch: 'INVITATION_EMAIL_MISMATCH',
+  /**
+   * Another project of the organization, or another environment of the project, already has
+   * this name (ignoring case). `details.field` is "name".
+   */
+  NameTaken: 'NAME_TAKEN',
   Forbidden: 'FORBIDDEN',
   /** A state-changing request came from another site (CSRF protection). */
   OriginNotAllowed: 'ORIGIN_NOT_ALLOWED',

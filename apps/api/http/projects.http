@@ -1,0 +1,105 @@
+# Gọi thử các endpoint project / environment bằng REST Client (humao.rest-client).
+#
+# Trước tiên: đăng nhập bằng auth.http, rồi chạy "Lấy access token" bên dưới. Cần một org mà
+# bạn là owner hoặc admin: chạy "Các org của bạn", org đầu tiên trong danh sách được dùng
+# (đổi chỉ số hoặc dán id vào @orgId nếu muốn org khác).
+
+@baseUrl = http://localhost:4000/api/v1
+@accessToken = {{refresh.response.body.$.data.accessToken}}
+@orgId = {{orgs.response.body.$.data[0].id}}
+@projectId = {{createProject.response.body.$.data.id}}
+@productionId = {{createProject.response.body.$.data.environments[2].id}}
+@environmentId = {{createEnvironment.response.body.$.data.id}}
+
+
+### Lấy access token từ refresh cookie (chạy lại khi token hết hạn sau 15 phút)
+# @name refresh
+POST {{baseUrl}}/auth/refresh
+
+### Các org của bạn (org đầu tiên được dùng bên dưới)
+# @name orgs
+GET {{baseUrl}}/organizations
+Authorization: Bearer {{accessToken}}
+
+
+### ───────────────────────── Project ─────────────────────────
+
+### Tạo project → 201, kèm development, staging, production (production được bảo vệ).
+# Owner / admin; member, viewer → 403. Trùng tên project khác trong org (không phân biệt hoa
+# thường) → 409 NAME_TAKEN
+# @name createProject
+POST {{baseUrl}}/organizations/{{orgId}}/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Cổng thanh toán"
+}
+
+### Các project của org, theo tên, kèm environment (mọi vai trò)
+GET {{baseUrl}}/organizations/{{orgId}}/projects
+Authorization: Bearer {{accessToken}}
+
+### Xem một project (id không có trong org → 404)
+GET {{baseUrl}}/organizations/{{orgId}}/projects/{{projectId}}
+Authorization: Bearer {{accessToken}}
+
+### Đổi tên project → 200 (owner / admin)
+PATCH {{baseUrl}}/organizations/{{orgId}}/projects/{{projectId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Cổng thanh toán v2"
+}
+
+
+### ───────────────────────── Environment ─────────────────────────
+
+### Thêm environment → 201, nằm sau các environment khác; mặc định không được bảo vệ.
+# Trùng tên environment khác của project → 409 NAME_TAKEN
+# @name createEnvironment
+POST {{baseUrl}}/organizations/{{orgId}}/projects/{{projectId}}/environments
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "preview"
+}
+
+### Thêm environment được bảo vệ ngay từ đầu
+POST {{baseUrl}}/organizations/{{orgId}}/projects/{{projectId}}/environments
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "production-eu",
+  "protected": true
+}
+
+### Đổi tên environment vừa thêm
+PATCH {{baseUrl}}/organizations/{{orgId}}/projects/{{projectId}}/environments/{{environmentId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "review"
+}
+
+### Bỏ bảo vệ production (owner / admin). Body rỗng {} → 400
+PATCH {{baseUrl}}/organizations/{{orgId}}/projects/{{projectId}}/environments/{{productionId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "protected": false
+}
+
+### Bảo vệ lại production
+PATCH {{baseUrl}}/organizations/{{orgId}}/projects/{{projectId}}/environments/{{productionId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "protected": true
+}

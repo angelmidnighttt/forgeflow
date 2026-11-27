@@ -25,6 +25,8 @@ FROM manifests AS prod-deps
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --workspace @forgeflow/api
 
 FROM base AS runtime
+# Servers prune old versions by this label (infra/staging/scripts/deploy.sh).
+LABEL org.opencontainers.image.title="forgeflow-api"
 ENV NODE_ENV=production
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json

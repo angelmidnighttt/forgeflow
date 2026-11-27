@@ -28,12 +28,16 @@ export class EnvValidationError extends Error {
 /**
  * Validates `source` against `schema` and returns the typed result.
  * Throws EnvValidationError listing every problem, so a process fails at startup instead of later.
+ *
+ * An empty value (`KEY=`) counts as unset: Docker Compose passes a variable that is listed but left
+ * empty in its env file as "", and that must turn an optional setting off, not fail validation.
  */
 export function parseEnv<T extends z.ZodType>(
   schema: T,
   source: Record<string, string | undefined> = process.env,
 ): z.infer<T> {
-  const result = schema.safeParse(source);
+  const set = Object.fromEntries(Object.entries(source).filter(([, value]) => value !== ''));
+  const result = schema.safeParse(set);
   if (result.success) return result.data;
   const problems = result.error.issues.map((issue) => {
     const key = issue.path.join('.') || '(root)';

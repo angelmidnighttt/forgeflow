@@ -1,0 +1,79 @@
+name: Deploy to staging
+
+# CI calls this after it pushed a commit's images; run it by hand with an earlier commit to roll
+# back. The server side is infra/staging (README.md there explains the secrets and variables).
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Commit whose images to deploy
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Full SHA of a commit on main that CI built (an earlier one rolls back)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check the version
+        run: |
+          if [[ ! $VERSION =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::version must be a full 40-character commit SHA, got '$VERSION'"
+            exit 1
+          fi
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 0600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      # The server's forced command (forgeflow-deploy) reads the registry token from stdin and
+      # uses it for this pull only; the token expires with this job.
+      - name: Deploy ${{ inputs.version }}
+        env:
+          HOST: ${{ vars.DEPLOY_SSH_HOST }}
+          PORT: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s\n' "$REGISTRY_TOKEN" |
+            ssh -i ~/.ssh/deploy_key -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o ServerAliveInterval=30 "deploy@$HOST" "deploy $VERSION $GITHUB_ACTOR"
+
+      - name: The site answers with the new version
+        env:
+          URL: ${{ vars.STAGING_URL }}
+        run: |
+          for _ in $(seq 1 24); do
+            if curl -fsS --max-time 5 "$URL/api/v1/health" | grep -q "\"version\":\"$VERSION\""; then
+              echo "$URL runs $VERSION"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::$URL/api/v1/health does not report version $VERSION"
+          exit 1

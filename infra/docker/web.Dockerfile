@@ -21,6 +21,8 @@ RUN npx tsc -b packages/contracts && npm run build -w @forgeflow/web
 
 # Next's standalone output bundles only the files the server needs.
 FROM base AS runtime
+# Servers prune old versions by this label (infra/staging/scripts/deploy.sh).
+LABEL org.opencontainers.image.title="forgeflow-web"
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \

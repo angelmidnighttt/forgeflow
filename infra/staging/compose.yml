@@ -1,0 +1,120 @@
+# ForgeFlow on one server: Caddy (HTTPS) in front of the web app and the api, PostgreSQL reachable
+# only on the internal network. scripts/deploy.sh runs it (CI calls that over SSH); see README.md.
+# Settings and secrets come from the server's /opt/forgeflow/.env (template: .env.example);
+# FORGEFLOW_VERSION, the commit whose images to run, comes from deploy.sh.
+name: forgeflow
+
+x-api-image: &api-image ${FORGEFLOW_IMAGES:?set FORGEFLOW_IMAGES in .env}-api:${FORGEFLOW_VERSION:?}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: forgeflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: forgeflow
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U forgeflow -d forgeflow']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # One-shot jobs: deploy.sh runs them, in this order, before a new version takes traffic.
+  # Lets the api's role (forgeflow_app) log in with APP_DB_PASSWORD (docs/adr/ADR-0002).
+  app-role:
+    image: pgvector/pgvector:pg17
+    profiles: [jobs]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: forgeflow
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      PGDATABASE: postgres
+      FORGEFLOW_APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+    volumes:
+      - ../compose/postgres/init/01-app-role.sql:/app-role.sql:ro
+    command: ['psql', '-v', 'ON_ERROR_STOP=1', '-q', '-f', '/app-role.sql']
+
+  # Applies pending migrations as the owner of the tables.
+  migrate:
+    image: *api-image
+    profiles: [jobs]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MIGRATION_DATABASE_URL: postgres://forgeflow:${POSTGRES_PASSWORD:?}@postgres:5432/forgeflow
+    command: ['node', 'packages/database/dist/scripts/migrate.js']
+
+  api:
+    image: *api-image
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_VERSION: ${FORGEFLOW_VERSION:?}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      API_PORT: '4000'
+      # forgeflow_app: row-level security applies; the api refuses to start as the owner.
+      DATABASE_URL: postgres://forgeflow_app:${APP_DB_PASSWORD:?}@postgres:5432/forgeflow
+      APP_ORIGIN: https://${SITE_HOST:?set SITE_HOST in .env}
+      # Caddy is the one proxy in front: X-Forwarded-For's last hop is the client.
+      TRUST_PROXY: '1'
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      SMTP_URL: ${SMTP_URL:?set SMTP_URL in .env}
+      MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:4000/api/v1/ready']
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      start_interval: 2s
+      retries: 3
+
+  web:
+    image: ${FORGEFLOW_IMAGES:?}-web:${FORGEFLOW_VERSION:?}
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/login']
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      start_interval: 2s
+      retries: 3
+
+  # The only service with published ports. Docker's port rules bypass ufw, so nothing else may
+  # publish one.
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      SITE_HOST: ${SITE_HOST:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  # Certificates and the ACME account: keep them, or Let's Encrypt rate limits may bite.
+  caddy_data:
+  caddy_config:

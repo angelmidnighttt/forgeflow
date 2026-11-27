@@ -1,0 +1,24 @@
+# Public entry point. Caddy obtains and renews the HTTPS certificate for SITE_HOST by itself and
+# redirects HTTP to HTTPS. /api/* goes straight to the api, everything else to the Next.js server
+# (whose own /api rewrite is only used in local development).
+{$SITE_HOST} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Staging: keep it out of search engines. Remove for production.
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

@@ -292,7 +292,7 @@ Dữ liệu tenant được cách ly hai lớp: tầng app kiểm tra membership
 | `forgeflow` (owner) | `MIGRATION_DATABASE_URL` | migrate / reset / seed | sở hữu bảng, bỏ qua RLS                                           |
 
 - api **từ chối khởi động** nếu `DATABASE_URL` là superuser hoặc role có `BYPASSRLS`.
-- Migration cấp quyền cho `forgeflow_app` nhưng không đặt mật khẩu. Ở local, role đăng nhập được tạo bởi `infra/compose/postgres/init/01-app-role.sql` (Postgres chạy khi tạo volume; volume cũ: `npm run db:app-role`); CI chạy cùng file đó; production do hạ tầng tạo (Phase 11).
+- Migration cấp quyền cho `forgeflow_app` nhưng không đặt mật khẩu. Ở local, role đăng nhập được tạo bởi `infra/compose/postgres/init/01-app-role.sql` (Postgres chạy khi tạo volume; volume cũ: `npm run db:app-role`); CI chạy cùng file đó; trên server (`infra/staging`), mỗi lần deploy chạy lại file này với mật khẩu lấy từ `APP_DB_PASSWORD` (biến `FORGEFLOW_APP_DB_PASSWORD` của psql; không đặt thì mặc định là `forgeflow_app`).
 - **Truy vấn bảng tenant phải chạy trong `database.withTenant({ organizationId, userId }, (tx) => …)`**: mở transaction và đặt `app.organization_id` / `app.user_id` (chỉ trong transaction). Không có context thì policy không khớp dòng nào.
 - Policy hiện có: `organizations`, `memberships`, `invitations` đọc / ghi theo org trong context; user trong context đọc được membership của chính mình và các org mình thuộc về (để liệt kê org). `users` và các bảng identity không thuộc tenant nên không bật RLS.
 - Luồng chưa biết org (xem / nhận lời mời theo token) dùng hàm `SECURITY DEFINER` hẹp (`forgeflow_invitation_organization`) chỉ trả org id, rồi chạy phần còn lại trong `withTenant`.
@@ -304,9 +304,11 @@ Dữ liệu tenant được cách ly hai lớp: tầng app kiểm tra membership
 docker build -f infra/docker/api.Dockerfile -t forgeflow-api .
 docker build -f infra/docker/web.Dockerfile -t forgeflow-web .
 
-# Migration chạy như một bước riêng trước khi bản mới nhận traffic
-docker run --rm -e DATABASE_URL=postgres://... forgeflow-api node packages/database/dist/scripts/migrate.js
+# Migration chạy như một bước riêng, bằng role owner, trước khi bản mới nhận traffic
+docker run --rm -e MIGRATION_DATABASE_URL=postgres://... forgeflow-api node packages/database/dist/scripts/migrate.js
 ```
+
+CI build cả hai image cho mọi pull request; trên `main` thì đẩy thêm lên `ghcr.io/<owner>/forgeflow-{api,web}:<commit sha>`.
 
 ## Ghi chú kỹ thuật
 
@@ -317,5 +319,7 @@ docker run --rm -e DATABASE_URL=postgres://... forgeflow-api node packages/datab
 - **`.env` không bao giờ được commit.** Production nhận cấu hình từ môi trường deploy.
 
 ## Deploy
+
+Staging chạy trên một VPS bằng Docker Compose, với Caddy (HTTPS tự động) đứng trước web và api. Mỗi lần push lên `main` mà CI xanh thì job **Staging** tự deploy commit đó qua SSH. Muốn rollback thì chạy workflow **Deploy to staging** với SHA cũ. Cách cài server, cấu hình GitHub, backup và vận hành: [infra/staging/README.md](infra/staging/README.md).
 
 Chưa có bản production. Error tracking sẽ dùng Sentry.

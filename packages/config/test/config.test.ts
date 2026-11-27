@@ -21,6 +21,19 @@ describe('parseEnv', () => {
     });
   });
 
+  it('treats an empty value as unset', () => {
+    const optional = schema.extend({ CLIENT_ID: z.string().min(1).optional() });
+    const env = parseEnv(optional, {
+      DATABASE_URL: 'postgres://u:p@localhost:5432/db',
+      PORT: '',
+      CLIENT_ID: '',
+    });
+    expect(env.PORT).toBe(4000);
+    expect(env.CLIENT_ID).toBeUndefined();
+
+    expect(() => parseEnv(schema, { DATABASE_URL: '' })).toThrow(/DATABASE_URL/);
+  });
+
   it('lists every invalid or missing variable', () => {
     let caught: unknown;
     try {
